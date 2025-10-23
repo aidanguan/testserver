@@ -1,0 +1,14 @@
+{
+  "include": [
+    "app"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/.venv",
+    "**/venv"
+  ],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "warning",
+  "reportIncompatibleMethodOverride": "warning",
+  "stubPath": ""
+}

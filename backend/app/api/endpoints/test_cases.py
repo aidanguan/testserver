@@ -4,7 +4,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List
+from typing import List, Dict, Any, cast
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
@@ -260,10 +260,10 @@ async def generate_playwright_script(
     )
     
     try:
-        # 调用LLM生成脚本
+        # 调用LLM生成脚本，使用 cast 进行类型转换
         result = llm_service.generate_playwright_script(
             case_name=test_case.name,
-            standard_steps=test_case.standard_steps,
+            standard_steps=cast(List[Dict[str, Any]], test_case.standard_steps),
             base_url=project.base_url
         )
         
