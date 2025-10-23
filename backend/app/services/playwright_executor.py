@@ -12,14 +12,18 @@ from pathlib import Path
 class PlaywrightExecutor:
     """Playwright脚本执行器"""
     
-    def __init__(self, artifacts_base_path: str):
+    def __init__(self, artifacts_base_path: str, llm_service=None, expected_result: str = None):
         """
         初始化执行器
         
         Args:
             artifacts_base_path: 工件存储基础路径
+            llm_service: LLM服务实例（用于视觉分析）
+            expected_result: 预期结果描述
         """
         self.artifacts_base_path = artifacts_base_path
+        self.llm_service = llm_service
+        self.expected_result = expected_result
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -136,6 +140,7 @@ class PlaywrightExecutor:
             "description": step.get("description", ""),
             "status": "success",
             "screenshot_path": None,
+            "vision_observation": None,  # 视觉观察结果
             "error_message": None,
             "start_time": datetime.utcnow().isoformat(),
             "end_time": None
@@ -191,6 +196,23 @@ class PlaywrightExecutor:
                 screenshot_path = os.path.join(screenshots_path, screenshot_name)
                 self.page.screenshot(path=screenshot_path, full_page=True)
                 step_result["screenshot_path"] = screenshot_path
+            
+            # 如果有截图且配置了LLM服务，立即进行视觉分析
+            if step_result["screenshot_path"] and self.llm_service and self.expected_result:
+                try:
+                    print(f"\n✨ 步骤 {step['index']} 执行完毕，立即开始视觉分析...")
+                    vision_result = self.llm_service._analyze_screenshot_with_vision(
+                        screenshot_path=step_result["screenshot_path"],
+                        expected_result=self.expected_result,
+                        step_status=step_result
+                    )
+                    # 将视觉分析结果序列化
+                    import json
+                    step_result["vision_observation"] = json.dumps(vision_result, ensure_ascii=False)
+                    print(f"✅ 步骤 {step['index']} 视觉分析完成: {vision_result.get('matches_expectation')}")
+                except Exception as e:
+                    print(f"⚠️ 步骤 {step['index']} 视觉分析失败: {str(e)}")
+                    step_result["vision_observation"] = json.dumps({"error": str(e)}, ensure_ascii=False)
             
         except Exception as e:
             step_result["status"] = "failed"

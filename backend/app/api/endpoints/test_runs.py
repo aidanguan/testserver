@@ -67,7 +67,26 @@ def execute_test_background(
             return
         
         # 执行Playwright脚本
-        executor = PlaywrightExecutor(settings.ARTIFACTS_PATH)
+        # 初始化LLM服务用于实时视觉分析
+        llm_service = None
+        try:
+            api_key = decrypt_api_key(project.llm_api_key)
+            llm_service = LLMService(
+                provider=project.llm_provider,
+                model=project.llm_model,
+                api_key=api_key,
+                base_url=project.llm_base_url,
+                config=project.llm_config
+            )
+            print(f"\ud83e\udd16 LLM服务初始化成功，将进行实时视觉分析")
+        except Exception as e:
+            print(f"\u26a0\ufe0f LLM服务初始化失败: {e}，将跳过视觉分析")
+        
+        executor = PlaywrightExecutor(
+            artifacts_base_path=settings.ARTIFACTS_PATH,
+            llm_service=llm_service,
+            expected_result=test_case.expected_result
+        )
         exec_result = executor.execute_script(
             script=test_case.playwright_script,
             run_id=test_run_id
@@ -81,6 +100,7 @@ def execute_test_background(
                 step_description=step_data["description"],
                 status=StepStatus.SUCCESS if step_data["status"] == "success" else StepStatus.FAILED,
                 screenshot_path=step_data.get("screenshot_path"),
+                vision_observation=step_data.get("vision_observation"),  # 保存视觉观察结果
                 start_time=datetime.fromisoformat(step_data["start_time"]),
                 end_time=datetime.fromisoformat(step_data["end_time"]) if step_data.get("end_time") else None,
                 error_message=step_data.get("error_message")
@@ -120,7 +140,10 @@ def execute_test_background(
                 # 保存判定结果
                 verdict_map = {"passed": LLMVerdict.PASSED, "failed": LLMVerdict.FAILED, "unknown": LLMVerdict.UNKNOWN}
                 test_run.llm_verdict = verdict_map.get(verdict_result.get("verdict"), LLMVerdict.UNKNOWN)
-                test_run.llm_reason = verdict_result.get("reason")
+                
+                # 将完整的判定结果（包括 observations）序列化为 JSON 存储
+                import json
+                test_run.llm_reason = json.dumps(verdict_result, ensure_ascii=False)
                 
             except Exception as e:
                 print(f"LLM判定失败: {e}")

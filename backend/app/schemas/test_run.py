@@ -21,6 +21,7 @@ class StepExecutionResponse(BaseModel):
     step_description: str
     status: StepStatus
     screenshot_path: Optional[str] = None
+    vision_observation: Optional[str] = None  # 视觉观察结果（JSON字符串）
     start_time: datetime
     end_time: Optional[datetime] = None
     error_message: Optional[str] = None

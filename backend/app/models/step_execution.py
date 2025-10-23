@@ -25,6 +25,7 @@ class StepExecution(Base):
     step_description = Column(Text, nullable=False)
     status = Column(Enum(StepStatus), nullable=False)
     screenshot_path = Column(String(500))
+    vision_observation = Column(Text)  # 视觉观察结果（JSON格式）
     start_time = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_time = Column(DateTime)
     error_message = Column(Text)

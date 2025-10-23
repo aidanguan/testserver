@@ -96,7 +96,7 @@ class LLMService:
         step_statuses: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """
-        分析测试结果并给出判定
+        分析测试结果并给出判定（使用视觉大模型分析截图）
         
         Args:
             expected_result: 预期结果描述
@@ -107,9 +107,47 @@ class LLMService:
         Returns:
             判定结果字典 {verdict, confidence, reason, observations}
         """
-        prompt = self._build_verdict_prompt(expected_result, step_screenshots, console_logs, step_statuses)
-        response = self._call_llm(prompt)
-        return self._parse_verdict_response(response)
+        print(f"\n########## analyze_test_result 被调用 ##########")
+        print(f"预期结果: {expected_result}")
+        print(f"截图数量: {len(step_screenshots)}")
+        print(f"截图列表: {step_screenshots}")
+        print(f"步骤状态数量: {len(step_statuses)}")
+        
+        # 如果没有截图，使用基础判定
+        if not step_screenshots:
+            print("没有截图，使用基础判定")
+            print("########## analyze_test_result 结束 ##########\n")
+            return self._analyze_without_vision(expected_result, console_logs, step_statuses)
+        
+        print(f"有截图，将使用视觉大模型分析")
+        
+        # 使用视觉大模型分析每个截图
+        screenshot_analyses = []
+        for idx, screenshot_path in enumerate(step_screenshots):
+            try:
+                analysis = self._analyze_screenshot_with_vision(
+                    screenshot_path,
+                    expected_result,
+                    step_statuses[idx] if idx < len(step_statuses) else None
+                )
+                screenshot_analyses.append({
+                    "step_index": idx + 1,
+                    "screenshot_path": screenshot_path,
+                    "analysis": analysis
+                })
+            except Exception as e:
+                print(f"分析截图 {screenshot_path} 失败: {e}")
+                screenshot_analyses.append({
+                    "step_index": idx + 1,
+                    "screenshot_path": screenshot_path,
+                    "analysis": {"error": str(e)}
+                })
+        
+        # 综合所有截图分析结果和步骤状态，给出最终判定
+        result = self._综合判定(expected_result, screenshot_analyses, console_logs, step_statuses)
+        print(f"最终判定结果: {result}")
+        print("########## analyze_test_result 结束 ##########\n")
+        return result
     
     def _call_llm(self, prompt: str) -> str:
         """调用LLM API"""
@@ -357,3 +395,114 @@ class LLMService:
     def _parse_verdict_response(self, response: str) -> Dict[str, Any]:
         """解析判定响应"""
         return self._parse_case_response(response)
+    
+    def _analyze_screenshot_with_vision(self, screenshot_path: str, expected_result: str, step_status: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """使用视觉大模型分析截图"""
+        import base64
+        import os
+        
+        print(f"\n========== 开始视觉分析 ==========")
+        print(f"Provider: {self.provider}")
+        print(f"Model: {self.model}")
+        print(f"截图路径: {screenshot_path}")
+        
+        # 读取截图文件并转为base64
+        try:
+            with open(screenshot_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+            print(f"截图文件读取成功，大小: {len(image_data)} bytes (base64)")
+        except Exception as e:
+            print(f"读取截图失败: {str(e)}")
+            return {"error": f"读取截图失败: {str(e)}"}
+        
+        step_desc = step_status.get("description", "") if step_status else ""
+        
+        prompt = f"""你是一个专业的UI测试分析专家。请分析这张截图。
+
+步骤描述: {step_desc}
+预期结果: {expected_result}
+
+请描述你在截图中看到的内容，并判断是否符合预期。返回JSON格式：
+{{
+  "observation": "具体观察到的内容",
+  "matches_expectation": true/false,
+  "issues": ["发现的问题列表"]
+}}"""
+        
+        # 调用视觉大模型
+        if self.provider in ["openai", "dashscope"]:
+            try:
+                print(f"调用 {self.provider} Vision API，模型: {self.model}")
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
+                        ]
+                    }],
+                    max_tokens=500
+                )
+                result_text = response.choices[0].message.content or "{}"
+                print(f"Vision API响应: {result_text[:200]}...")
+                parsed_result = json.loads(result_text.strip().replace("```json", "").replace("```", ""))
+                print(f"解析结果: {parsed_result}")
+                print(f"========== 视觉分析完成 ==========\n")
+                return parsed_result
+            except Exception as e:
+                print(f"Vision API调用失败: {str(e)}")
+                print(f"========== 视觉分析失败 ==========\n")
+                return {"error": f"Vision API调用失败: {str(e)}"}
+        else:
+            print(f"Provider {self.provider} 不支持视觉分析")
+            print(f"========== 视觉分析跳过 ==========\n")
+            return {"observation": "当前模型不支持视觉分析", "matches_expectation": None, "issues": []}
+    
+    def _analyze_without_vision(self, expected_result: str, console_logs: List[str], step_statuses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """不使用视觉分析的基本判定"""
+        all_success = all(s.get("status") == "success" for s in step_statuses)
+        return {
+            "verdict": "passed" if all_success else "failed",
+            "confidence": 0.7,
+            "reason": "根据步骤执行状态判定（未使用视觉分析）",
+            "observations": []
+        }
+    
+    def _综合判定(self, expected_result: str, screenshot_analyses: List[Dict], console_logs: List[str], step_statuses: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """综合所有分析结果给出最终判定"""
+        # 统计符合预期的截图数量
+        matching_count = sum(1 for a in screenshot_analyses if a.get("analysis", {}).get("matches_expectation") == True)
+        total_count = len(screenshot_analyses)
+        
+        # 收集所有观察
+        observations = []
+        for analysis in screenshot_analyses:
+            if "analysis" in analysis and "observation" in analysis["analysis"]:
+                observations.append({
+                    "step_index": analysis["step_index"],
+                    "type": "visual",
+                    "description": analysis["analysis"]["observation"],
+                    "severity": "error" if not analysis["analysis"].get("matches_expectation") else "info"
+                })
+        
+        # 判定逻辑
+        if matching_count == total_count:
+            verdict = "passed"
+            confidence = 0.9
+            reason = f"所有{total_count}个步骤的截图分析都符合预期结果"
+        elif matching_count >= total_count * 0.7:
+            verdict = "unknown"
+            confidence = 0.6
+            reason = f"{matching_count}/{total_count}个步骤符合预期，部分步骤存在问题"
+        else:
+            verdict = "failed"
+            confidence = 0.85
+            reason = f"只有{matching_count}/{total_count}个步骤符合预期，测试失败"
+        
+        return {
+            "verdict": verdict,
+            "confidence": confidence,
+            "reason": reason,
+            "observations": observations
+        }

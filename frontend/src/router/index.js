@@ -40,6 +40,11 @@ const routes = [
         component: () => import('../views/TestCaseDetail.vue')
       },
       {
+        path: 'cases/:id/history',
+        name: 'TestCaseHistory',
+        component: () => import('../views/TestCaseHistory.vue')
+      },
+      {
         path: 'runs/:id',
         name: 'TestRunDetail',
         component: () => import('../views/TestRunDetail.vue')

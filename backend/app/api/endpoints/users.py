@@ -83,7 +83,7 @@ async def update_user(
         )
     
     # 更新字段
-    if user_data.password:
+    if user_data.password and user_data.password.strip():
         user.password_hash = get_password_hash(user_data.password)
     if user_data.role:
         user.role = user_data.role

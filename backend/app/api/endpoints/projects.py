@@ -113,6 +113,8 @@ async def update_project(
         project.llm_model = project_data.llm_model
     if project_data.llm_api_key:
         project.llm_api_key = encrypt_api_key(project_data.llm_api_key)
+    if project_data.llm_base_url is not None:
+        project.llm_base_url = project_data.llm_base_url
     if project_data.llm_config is not None:
         project.llm_config = project_data.llm_config
     

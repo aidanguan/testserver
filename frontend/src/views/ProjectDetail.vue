@@ -2,7 +2,17 @@
   <div class="project-detail">
     <el-page-header @back="goBack" :title="project?.name || '项目详情'">
       <template #content>
-        <span>{{ project?.description }}</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span>{{ project?.description }}</span>
+          <el-button 
+            v-if="authStore.isAdmin" 
+            size="small" 
+            type="primary"
+            @click="handleEditProject"
+          >
+            编辑项目
+          </el-button>
+        </div>
       </template>
     </el-page-header>
     
@@ -16,15 +26,26 @@
         </div>
         
         <el-table :data="testCases" v-loading="loading" style="margin-top: 20px">
+          <el-table-column prop="id" label="编号" width="80" />
           <el-table-column prop="name" label="用例名称" />
           <el-table-column prop="description" label="描述" />
-          <el-table-column label="操作" width="200">
+          <el-table-column label="操作" width="350">
             <template #default="scope">
               <el-button size="small" @click="handleViewCase(scope.row)">
                 查看
               </el-button>
               <el-button size="small" type="primary" @click="handleExecute(scope.row)">
                 执行
+              </el-button>
+              <el-button size="small" @click="handleViewHistory(scope.row)">
+                历史
+              </el-button>
+              <el-button 
+                size="small" 
+                type="danger" 
+                @click="handleDelete(scope.row)"
+              >
+                删除
               </el-button>
             </template>
           </el-table-column>
@@ -49,13 +70,15 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectStore } from '../stores/project'
+import { useAuthStore } from '../stores/auth'
 import { testCaseAPI, testRunAPI } from '../api'
 
 const route = useRoute()
 const router = useRouter()
 const projectStore = useProjectStore()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const activeTab = ref('cases')
@@ -102,6 +125,38 @@ const handleExecute = async (row) => {
     router.push(`/runs/${result.id}`)
   } catch (error) {
     ElMessage.error('执行失败')
+  }
+}
+
+const handleEditProject = () => {
+  // 跳转到项目列表页，触发编辑
+  router.push(`/projects?edit=${projectId}`)
+}
+
+const handleViewHistory = (row) => {
+  // 跳转到测试历史页面
+  router.push(`/cases/${row.id}/history`)
+}
+
+const handleDelete = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除测试用例“${row.name}”吗？删除后将无法恢复！`,
+      '警告',
+      {
+        type: 'warning',
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消'
+      }
+    )
+    
+    await testCaseAPI.delete(row.id)
+    ElMessage.success('删除成功')
+    await loadTestCases()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.response?.data?.detail || '删除失败')
+    }
   }
 }
 

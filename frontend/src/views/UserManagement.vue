@@ -194,7 +194,8 @@ const handleUpdate = async () => {
       role: editForm.role,
       is_active: editForm.is_active
     }
-    if (editForm.password) {
+    // 只有当密码不为空时才添加到更新数据中
+    if (editForm.password && editForm.password.trim()) {
       updateData.password = editForm.password
     }
     

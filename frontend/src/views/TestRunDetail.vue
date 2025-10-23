@@ -37,16 +37,41 @@
 
       <!-- LLM判定理由 -->
       <el-alert
-        v-if="runDetail.llm_reason"
-        :title="`LLM判定理由`"
+        v-if="verdictReasonText"
+        :title="`🤖 视觉大模型判定理由`"
         :type="getVerdictType(runDetail.llm_verdict)"
         :closable="false"
         style="margin-top: 20px"
       >
         <template #default>
-          <p style="white-space: pre-wrap">{{ runDetail.llm_reason }}</p>
+          <p style="white-space: pre-wrap; font-weight: 500;">{{ verdictReasonText }}</p>
         </template>
       </el-alert>
+
+      <!-- 视觉分析观察记录 -->
+      <div v-if="hasObservations" style="margin-top: 20px">
+        <h3>👁️ 视觉分析观察记录</h3>
+        <el-timeline style="margin-top: 15px">
+          <el-timeline-item
+            v-for="obs in observations"
+            :key="obs.step_index"
+            :color="obs.severity === 'error' ? '#F56C6C' : '#67C23A'"
+            :icon="obs.severity === 'error' ? 'CloseBold' : 'SuccessFilled'"
+          >
+            <el-card>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px">
+                <span style="font-weight: bold; color: #409EFF;">步骤 {{ obs.step_index }}</span>
+                <el-tag :type="obs.severity === 'error' ? 'danger' : 'success'" size="small">
+                  {{ obs.severity === 'error' ? '❌ 不符合预期' : '✅ 符合预期' }}
+                </el-tag>
+              </div>
+              <div style="color: #606266; line-height: 1.6;">
+                {{ obs.description }}
+              </div>
+            </el-card>
+          </el-timeline-item>
+        </el-timeline>
+      </div>
 
       <!-- 错误信息 -->
       <el-alert
@@ -87,6 +112,30 @@
                 <img :src="getScreenshotUrl(step.screenshot_path)" alt="步骤截图" />
               </div>
 
+              <!-- 视觉观察结果 -->
+              <div v-if="step.vision_observation" class="vision-observation">
+                <el-alert
+                  :title="getVisionTitle(step)"
+                  :type="getVisionAlertType(step)"
+                  :closable="false"
+                  style="margin-top: 15px"
+                >
+                  <template #default>
+                    <div class="vision-content">
+                      <div class="vision-observation-text">
+                        {{ getVisionObservation(step) }}
+                      </div>
+                      <div v-if="getVisionIssues(step).length > 0" class="vision-issues">
+                        <p style="font-weight: bold; margin-top: 10px; margin-bottom: 5px;">🚨 发现的问题：</p>
+                        <ul style="margin: 0; padding-left: 20px;">
+                          <li v-for="(issue, idx) in getVisionIssues(step)" :key="idx">{{ issue }}</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </template>
+                </el-alert>
+              </div>
+
               <!-- 错误信息 -->
               <el-alert
                 v-if="step.error_message"
@@ -121,7 +170,40 @@ const runId = route.params.id
 const loading = ref(false)
 const runDetail = ref({
   test_case: {},
-  steps: []
+  steps: [],
+  llm_verdict: null,
+  llm_reason: null
+})
+
+// 解析判定结果
+const parsedVerdict = computed(() => {
+  if (!runDetail.value.llm_reason) return null
+  
+  try {
+    // 尝试解析 JSON
+    const parsed = JSON.parse(runDetail.value.llm_reason)
+    return parsed
+  } catch (e) {
+    // 如果不是 JSON，返回简单对象
+    return {
+      reason: runDetail.value.llm_reason,
+      observations: []
+    }
+  }
+})
+
+// 提取观察记录
+const observations = computed(() => {
+  if (!parsedVerdict.value || !parsedVerdict.value.observations) return []
+  return parsedVerdict.value.observations
+})
+
+const hasObservations = computed(() => observations.value.length > 0)
+
+// 显示的判定理由文本
+const verdictReasonText = computed(() => {
+  if (!parsedVerdict.value) return ''
+  return parsedVerdict.value.reason || runDetail.value.llm_reason || ''
 })
 
 const goBack = () => {
@@ -228,6 +310,59 @@ const getScreenshotUrl = (path) => {
   return `http://localhost:8000/artifacts/${cleanPath}`
 }
 
+// 解析视觉观察结果
+const parseVisionObservation = (visionJson) => {
+  if (!visionJson) return null
+  try {
+    return JSON.parse(visionJson)
+  } catch (e) {
+    return null
+  }
+}
+
+// 获取视觉观察标题
+const getVisionTitle = (step) => {
+  const vision = parseVisionObservation(step.vision_observation)
+  if (!vision) return ''
+  
+  if (vision.error) {
+    return '⚠️ 视觉分析失败'
+  }
+  
+  if (vision.matches_expectation === true) {
+    return '✅ 视觉分析：符合预期'
+  } else if (vision.matches_expectation === false) {
+    return '❌ 视觉分析：不符合预期'
+  }
+  return '👁️ 视觉分析结果'
+}
+
+// 获取视觉Alert类型
+const getVisionAlertType = (step) => {
+  const vision = parseVisionObservation(step.vision_observation)
+  if (!vision) return 'info'
+  
+  if (vision.error) return 'warning'
+  if (vision.matches_expectation === true) return 'success'
+  if (vision.matches_expectation === false) return 'error'
+  return 'info'
+}
+
+// 获取视觉观察文本
+const getVisionObservation = (step) => {
+  const vision = parseVisionObservation(step.vision_observation)
+  if (!vision) return ''
+  if (vision.error) return vision.error
+  return vision.observation || ''
+}
+
+// 获取发现的问题列表
+const getVisionIssues = (step) => {
+  const vision = parseVisionObservation(step.vision_observation)
+  if (!vision || !vision.issues) return []
+  return vision.issues
+}
+
 const loadRunDetail = async () => {
   loading.value = true
   try {
@@ -328,5 +463,32 @@ pre {
   margin: 0;
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.vision-observation {
+  margin-top: 15px;
+}
+
+.vision-content {
+  line-height: 1.6;
+}
+
+.vision-observation-text {
+  color: #606266;
+  font-size: 14px;
+}
+
+.vision-issues {
+  margin-top: 10px;
+}
+
+.vision-issues ul {
+  margin: 5px 0;
+  padding-left: 20px;
+  color: #606266;
+}
+
+.vision-issues li {
+  margin: 3px 0;
 }
 </style>
