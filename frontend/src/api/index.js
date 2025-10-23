@@ -47,6 +47,11 @@ export const projectAPI = {
   // 删除项目
   delete(id) {
     return apiClient.delete(`/projects/${id}`)
+  },
+  
+  // 获取仪表盘统计数据
+  getDashboardStats() {
+    return apiClient.get('/projects/stats/dashboard')
   }
 }
 

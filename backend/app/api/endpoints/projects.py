@@ -3,25 +3,64 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
-from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.models.test_case import TestCase
+from app.models.test_run import TestRun, LLMVerdict
+from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectWithStatsResponse
 from app.utils.encryption import encrypt_api_key, decrypt_api_key
 from app.api.dependencies import get_current_user, get_current_admin_user
 
 router = APIRouter(prefix="/projects", tags=["项目管理"])
 
 
-@router.get("", response_model=List[ProjectResponse])
+@router.get("", response_model=List[ProjectWithStatsResponse])
 async def list_projects(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取项目列表"""
+    """获取项目列表（带统计数据）"""
     projects = db.query(Project).all()
-    return [ProjectResponse.model_validate(project) for project in projects]
+    
+    result = []
+    for project in projects:
+        # 计算每个项目的统计数据
+        # 测试用例数
+        test_case_count = db.query(func.count(TestCase.id)).filter(
+            TestCase.project_id == project.id
+        ).scalar() or 0
+        
+        # 执行次数（通过test_case关联）
+        execution_count = db.query(func.count(TestRun.id)).join(
+            TestCase, TestRun.test_case_id == TestCase.id
+        ).filter(
+            TestCase.project_id == project.id
+        ).scalar() or 0
+        
+        # 计算通过率
+        if execution_count > 0:
+            passed_count = db.query(func.count(TestRun.id)).join(
+                TestCase, TestRun.test_case_id == TestCase.id
+            ).filter(
+                TestCase.project_id == project.id,
+                TestRun.llm_verdict == LLMVerdict.PASSED
+            ).scalar() or 0
+            pass_rate = round((passed_count / execution_count) * 100, 2)
+        else:
+            pass_rate = 0.0
+        
+        # 构建响应数据
+        project_dict = ProjectResponse.model_validate(project).model_dump()
+        project_dict['test_case_count'] = test_case_count
+        project_dict['execution_count'] = execution_count
+        project_dict['pass_rate'] = pass_rate
+        
+        result.append(ProjectWithStatsResponse(**project_dict))
+    
+    return result
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -142,3 +181,35 @@ async def delete_project(
     db.commit()
     
     return None
+
+
+@router.get("/stats/dashboard")
+async def get_dashboard_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取仪表盘统计数据"""
+    # 项目总数
+    projects_count = db.query(func.count(Project.id)).scalar()
+    
+    # 测试用例总数
+    test_cases_count = db.query(func.count(TestCase.id)).scalar()
+    
+    # 执行总次数
+    total_runs = db.query(func.count(TestRun.id)).scalar()
+    
+    # 计算通过率
+    if total_runs > 0:
+        passed_runs = db.query(func.count(TestRun.id)).filter(
+            TestRun.llm_verdict == LLMVerdict.PASSED
+        ).scalar()
+        pass_rate = round((passed_runs / total_runs) * 100, 2)
+    else:
+        pass_rate = 0
+    
+    return {
+        "projects": projects_count or 0,
+        "testCases": test_cases_count or 0,
+        "totalRuns": total_runs or 0,
+        "passRate": pass_rate
+    }

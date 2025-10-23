@@ -52,3 +52,10 @@ class ProjectResponse(ProjectBase):
     
     class Config:
         from_attributes = True
+
+
+class ProjectWithStatsResponse(ProjectResponse):
+    """带统计数据的项目响应Schema"""
+    test_case_count: int = Field(0, description="测试用例数")
+    execution_count: int = Field(0, description="执行次数")
+    pass_rate: float = Field(0.0, description="通过率")
