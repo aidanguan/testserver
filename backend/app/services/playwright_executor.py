@@ -72,13 +72,13 @@ class PlaywrightExecutor:
             # 获取浏览器类型
             browser_type = script.get("browser", "chromium")
             if browser_type == "chromium":
-                self.browser = self.playwright.chromium.launch(headless=True)
+                self.browser = self.playwright.chromium.launch(headless=False)  # 改为有头模式，可以看到浏览器
             elif browser_type == "firefox":
-                self.browser = self.playwright.firefox.launch(headless=True)
+                self.browser = self.playwright.firefox.launch(headless=False)  # 改为有头模式
             elif browser_type == "webkit":
-                self.browser = self.playwright.webkit.launch(headless=True)
+                self.browser = self.playwright.webkit.launch(headless=False)  # 改为有头模式
             else:
-                self.browser = self.playwright.chromium.launch(headless=True)
+                self.browser = self.playwright.chromium.launch(headless=False)  # 改为有头模式
             
             # 创建上下文
             viewport = script.get("viewport", {"width": 1280, "height": 720})
@@ -99,8 +99,10 @@ class PlaywrightExecutor:
             
             # 执行步骤
             steps = script.get("steps", [])
-            for step in steps:
-                step_result = self._execute_step(step, screenshots_path)
+            total_steps = len(steps)
+            for idx, step in enumerate(steps):
+                is_last_step = (idx == total_steps - 1)  # 判断是否是最后一步
+                step_result = self._execute_step(step, screenshots_path, is_last_step)
                 result["steps"].append(step_result)
                 
                 # 如果步骤失败,停止执行
@@ -124,13 +126,14 @@ class PlaywrightExecutor:
         
         return result
     
-    def _execute_step(self, step: Dict[str, Any], screenshots_path: str) -> Dict[str, Any]:
+    def _execute_step(self, step: Dict[str, Any], screenshots_path: str, is_last_step: bool = False) -> Dict[str, Any]:
         """
         执行单个步骤
         
         Args:
             step: 步骤配置
             screenshots_path: 截图保存路径
+            is_last_step: 是否是最后一步（不再使用，保留参数兼容性）
             
         Returns:
             步骤执行结果
@@ -140,7 +143,6 @@ class PlaywrightExecutor:
             "description": step.get("description", ""),
             "status": "success",
             "screenshot_path": None,
-            "vision_observation": None,  # 视觉观察结果
             "error_message": None,
             "start_time": datetime.utcnow().isoformat(),
             "end_time": None
@@ -190,29 +192,14 @@ class PlaywrightExecutor:
                 if not element.is_visible(timeout=timeout):
                     raise Exception(f"元素不可见: {selector}")
             
-            # 默认截屏
+            # 默认截屏（不再进行单步视觉分析，只保存截图供后续整体分析）
             if step.get("screenshot", True) and action != "screenshot":
+                # 等待3秒让页面完全加载后再截图
+                self.page.wait_for_timeout(3000)
                 screenshot_name = f"step_{step['index']}.png"
                 screenshot_path = os.path.join(screenshots_path, screenshot_name)
                 self.page.screenshot(path=screenshot_path, full_page=True)
                 step_result["screenshot_path"] = screenshot_path
-            
-            # 如果有截图且配置了LLM服务，立即进行视觉分析
-            if step_result["screenshot_path"] and self.llm_service and self.expected_result:
-                try:
-                    print(f"\n✨ 步骤 {step['index']} 执行完毕，立即开始视觉分析...")
-                    vision_result = self.llm_service._analyze_screenshot_with_vision(
-                        screenshot_path=step_result["screenshot_path"],
-                        expected_result=self.expected_result,
-                        step_status=step_result
-                    )
-                    # 将视觉分析结果序列化
-                    import json
-                    step_result["vision_observation"] = json.dumps(vision_result, ensure_ascii=False)
-                    print(f"✅ 步骤 {step['index']} 视觉分析完成: {vision_result.get('matches_expectation')}")
-                except Exception as e:
-                    print(f"⚠️ 步骤 {step['index']} 视觉分析失败: {str(e)}")
-                    step_result["vision_observation"] = json.dumps({"error": str(e)}, ensure_ascii=False)
             
         except Exception as e:
             step_result["status"] = "failed"

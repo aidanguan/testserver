@@ -88,6 +88,86 @@ class LLMService:
         response = self._call_llm(prompt)
         return self._parse_script_response(response)
     
+    def analyze_final_result(
+        self, 
+        expected_result: str,
+        final_screenshot: str,
+        console_logs: List[str],
+        all_steps_success: bool
+    ) -> Dict[str, Any]:
+        """
+        分析最终结果并给出判定（只看最后一张截图，整体判定）
+        
+        Args:
+            expected_result: 预期结果描述
+            final_screenshot: 最后一张截图路径
+            console_logs: 控制台日志
+            all_steps_success: 所有步骤是否执行成功
+            
+        Returns:
+            判定结果字典 {verdict, confidence, reason, observations}
+        """
+        print(f"\n########## analyze_final_result 被调用 ##########")
+        print(f"预期结果: {expected_result}")
+        print(f"最终截图: {final_screenshot}")
+        print(f"所有步骤成功: {all_steps_success}")
+        
+        if not final_screenshot:
+            print("没有截图，使用基础判定")
+            return self._analyze_without_vision(expected_result, console_logs, [])
+        
+        try:
+            # 使用视觉大模型分析最后一张截图
+            print(f"使用视觉大模型分析最终截图...")
+            vision_analysis = self._analyze_screenshot_with_vision(
+                screenshot_path=final_screenshot,
+                expected_result=expected_result,
+                step_status=None
+            )
+            
+            print(f"视觉分析结果: {vision_analysis}")
+            
+            # 基于视觉分析和步骤执行状态给出最终判定
+            matches_expectation = vision_analysis.get("matches_expectation")
+            
+            if matches_expectation and all_steps_success:
+                verdict = "passed"
+                confidence = 0.9
+                reason = f"最终截图符合预期结果：{vision_analysis.get('observation', '')}"
+            elif not all_steps_success:
+                verdict = "failed"
+                confidence = 0.85
+                reason = f"有步骤执行失败"
+            elif matches_expectation is False:
+                verdict = "failed"
+                confidence = 0.85
+                reason = f"最终截图不符合预期：{vision_analysis.get('observation', '')}"
+            else:
+                verdict = "unknown"
+                confidence = 0.6
+                reason = f"无法确定是否符合预期"
+            
+            result = {
+                "verdict": verdict,
+                "confidence": confidence,
+                "reason": reason,
+                "observations": [{
+                    "step_index": "final",
+                    "type": "visual",
+                    "description": vision_analysis.get("observation", ""),
+                    "severity": "error" if not matches_expectation else "info"
+                }]
+            }
+            
+            print(f"最终判定结果: {result}")
+            print("########## analyze_final_result 结束 ##########\n")
+            return result
+            
+        except Exception as e:
+            print(f"视觉分析失败: {str(e)}")
+            print("########## analyze_final_result 失败 ##########\n")
+            return self._analyze_without_vision(expected_result, console_logs, [])
+    
     def analyze_test_result(
         self, 
         expected_result: str,
@@ -293,6 +373,10 @@ class LLMService:
 - screenshot: 截屏
 - assertText: 断言文本内容
 - assertVisible: 断言元素可见
+
+重要提示：
+- 系统会在每个步骤执行后自动等待3秒再截图，确保页面完全加载
+- 你不需要在每个步骤后手动添加waitTime，除非有特殊需要
 
 请只返回JSON,不要包含其他说明文字。
 

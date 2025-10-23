@@ -112,11 +112,17 @@ def execute_test_background(
         # 更新运行记录
         test_run.artifacts_path = exec_result.get("artifacts_path")
         
+        print(f"\n========== 测试执行完成，开始更新状态 ==========")
+        print(f"exec_result.success = {exec_result.get('success')}")
+        print(f"exec_result.error_message = {exec_result.get('error_message')}")
+        
         if exec_result.get("success"):
             test_run.status = TestRunStatus.SUCCESS
+            print(f"✅ 测试执行成功，状态已更新为 SUCCESS")
             
-            # 使用LLM判定结果
+            # 使用LLM判定结果（只分析最终截图）
             try:
+                print(f"\n开始LLM判定...")
                 api_key = decrypt_api_key(project.llm_api_key)
                 llm_service = LLMService(
                     provider=project.llm_provider,
@@ -128,14 +134,29 @@ def execute_test_background(
                 
                 # 收集截图路径
                 screenshots = [s.get("screenshot_path") for s in exec_result.get("steps", []) if s.get("screenshot_path")]
+                print(f"收集到 {len(screenshots)} 张截图")
                 
-                # LLM判定
-                verdict_result = llm_service.analyze_test_result(
-                    expected_result=test_case.expected_result,
-                    step_screenshots=screenshots,
-                    console_logs=exec_result.get("console_logs", []),
-                    step_statuses=exec_result.get("steps", [])
-                )
+                # 只使用最后一张截图进行LLM判定（整体判定）
+                if screenshots:
+                    final_screenshot = screenshots[-1]
+                    print(f"使用最后一张截图进行整体判定: {final_screenshot}")
+                    
+                    verdict_result = llm_service.analyze_final_result(
+                        expected_result=test_case.expected_result,
+                        final_screenshot=final_screenshot,
+                        console_logs=exec_result.get("console_logs", []),
+                        all_steps_success=all(s.get("status") == "success" for s in exec_result.get("steps", []))
+                    )
+                else:
+                    print(f"没有截图，使用基础判定")
+                    verdict_result = {
+                        "verdict": "passed" if all(s.get("status") == "success" for s in exec_result.get("steps", [])) else "failed",
+                        "confidence": 0.7,
+                        "reason": "无截图，基于步骤执行状态判定",
+                        "observations": []
+                    }
+                
+                print(f"LLM判定结果: {verdict_result}")
                 
                 # 保存判定结果
                 verdict_map = {"passed": LLMVerdict.PASSED, "failed": LLMVerdict.FAILED, "unknown": LLMVerdict.UNKNOWN}
@@ -145,26 +166,45 @@ def execute_test_background(
                 import json
                 test_run.llm_reason = json.dumps(verdict_result, ensure_ascii=False)
                 
+                print(f"✅ LLM判定完成: {test_run.llm_verdict}")
+                
             except Exception as e:
-                print(f"LLM判定失败: {e}")
+                print(f"❌ LLM判定失败: {e}")
+                import traceback
+                traceback.print_exc()
                 test_run.llm_verdict = LLMVerdict.UNKNOWN
                 test_run.llm_reason = f"LLM判定失败: {str(e)}"
         
         else:
             test_run.status = TestRunStatus.FAILED
             test_run.error_message = exec_result.get("error_message")
+            print(f"❌ 测试执行失败: {test_run.error_message}")
         
         test_run.end_time = datetime.utcnow()
+        print(f"\n保存测试运行记录...")
         db.commit()
+        print(f"✅ 测试运行记录已保存")
+        print(f"最终状态: {test_run.status}")
+        print(f"LLM判定: {test_run.llm_verdict}")
+        print(f"========== 状态更新完成 ==========\n")
         
     except Exception as e:
         # 更新为错误状态
-        test_run = db.query(TestRun).filter(TestRun.id == test_run_id).first()
-        if test_run:
-            test_run.status = TestRunStatus.ERROR
-            test_run.error_message = str(e)
-            test_run.end_time = datetime.utcnow()
-            db.commit()
+        print(f"\n❌❌❌ 后台任务异常: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        try:
+            test_run = db.query(TestRun).filter(TestRun.id == test_run_id).first()
+            if test_run:
+                test_run.status = TestRunStatus.ERROR  # type: ignore
+                test_run.error_message = str(e)  # type: ignore
+                test_run.end_time = datetime.utcnow()  # type: ignore
+                db.commit()
+                print(f"✅ 已将状态更新为 ERROR")
+        except Exception as commit_error:
+            print(f"❌ 更新错误状态失败: {commit_error}")
+            db.rollback()
     
     finally:
         db.close()

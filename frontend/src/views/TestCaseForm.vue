@@ -72,44 +72,82 @@
         </div>
       </div>
 
-      <!-- 步骤3: 查看生成的脚本 -->
+      <!-- 步骤3: 生成脚本 -->
       <div v-if="currentStep === 2">
-        <h3>生成的Playwright脚本</h3>
-        <el-form label-width="120px" style="margin-top: 20px">
-          <el-form-item label="浏览器类型">
-            <el-input v-model="generatedScript.browser" disabled />
-          </el-form-item>
+        <div v-if="!scriptGenerated">
+          <h3>选择生成方式</h3>
+          <div style="margin-top: 20px; display: flex; gap: 20px; justify-content: center;">
+            <el-card shadow="hover" style="width: 300px; cursor: pointer;" @click="generateScriptByLLM">
+              <template #header>
+                <div style="text-align: center;">
+                  <el-icon :size="40" color="#409EFF"><MagicStick /></el-icon>
+                </div>
+              </template>
+              <div style="text-align: center;">
+                <h4>自动生成</h4>
+                <p style="color: #909399; font-size: 14px;">使用AI根据测试步骤自动生成脚本</p>
+                <el-button type="primary" :loading="generating" style="margin-top: 10px;">
+                  开始生成
+                </el-button>
+              </div>
+            </el-card>
 
-          <el-form-item label="视口尺寸">
-            <el-input
-              :value="`${generatedScript.viewport?.width} x ${generatedScript.viewport?.height}`"
-              disabled
-            />
-          </el-form-item>
+            <el-card shadow="hover" style="width: 300px; cursor: pointer;" @click="handleShowRecordDialog">
+              <template #header>
+                <div style="text-align: center;">
+                  <el-icon :size="40" color="#67C23A"><VideoCamera /></el-icon>
+                </div>
+              </template>
+              <div style="text-align: center;">
+                <h4>手工录制</h4>
+                <p style="color: #909399; font-size: 14px;">通过实际操作网站来录制脚本</p>
+                <el-button type="success" style="margin-top: 10px;">
+                  开始录制
+                </el-button>
+              </div>
+            </el-card>
+          </div>
+        </div>
 
-          <el-form-item label="执行步骤">
-            <el-table :data="generatedScript.steps" border>
-              <el-table-column prop="index" label="序号" width="80" />
-              <el-table-column prop="action" label="操作" width="120" />
-              <el-table-column prop="description" label="描述" />
-              <el-table-column prop="selector" label="选择器" width="150" />
-              <el-table-column prop="value" label="值" width="120" />
-              <el-table-column prop="screenshot" label="截屏" width="80">
-                <template #default="scope">
-                  <el-tag :type="scope.row.screenshot ? 'success' : 'info'" size="small">
-                    {{ scope.row.screenshot ? '是' : '否' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-form-item>
-        </el-form>
+        <div v-else>
+          <h3>生成的Playwright脚本</h3>
+          <el-form label-width="120px" style="margin-top: 20px">
+            <el-form-item label="浏览器类型">
+              <el-input v-model="generatedScript.browser" disabled />
+            </el-form-item>
 
-        <div style="text-align: right">
-          <el-button @click="currentStep = 1">上一步</el-button>
-          <el-button type="primary" :loading="saving" @click="saveTestCase">
-            保存用例
-          </el-button>
+            <el-form-item label="视口尺寸">
+              <el-input
+                :value="`${generatedScript.viewport?.width} x ${generatedScript.viewport?.height}`"
+                disabled
+              />
+            </el-form-item>
+
+            <el-form-item label="执行步骤">
+              <el-table :data="generatedScript.steps" border>
+                <el-table-column prop="index" label="序号" width="80" />
+                <el-table-column prop="action" label="操作" width="120" />
+                <el-table-column prop="description" label="描述" />
+                <el-table-column prop="selector" label="选择器" width="150" />
+                <el-table-column prop="value" label="值" width="120" />
+                <el-table-column prop="screenshot" label="截屏" width="80">
+                  <template #default="scope">
+                    <el-tag :type="scope.row.screenshot ? 'success' : 'info'" size="small">
+                      {{ scope.row.screenshot ? '是' : '否' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-form-item>
+          </el-form>
+
+          <div style="text-align: right">
+            <el-button @click="resetScriptGeneration">重新选择</el-button>
+            <el-button @click="currentStep = 1">上一步</el-button>
+            <el-button type="primary" :loading="saving" @click="saveTestCase">
+              保存用例
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -123,14 +161,76 @@
         </el-result>
       </div>
     </el-card>
+
+    <!-- 录制对话框 -->
+    <el-dialog
+      v-model="showRecordDialog"
+      title="录制Playwright脚本"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="!recordingSessionId">
+        <el-form label-width="100px">
+          <el-form-item label="目标网址" required>
+            <el-input
+              v-model="recordTargetUrl"
+              placeholder="请输入要测试的网站地址"
+              clearable
+            >
+              <template #prepend>https://</template>
+            </el-input>
+          </el-form-item>
+        </el-form>
+
+        <el-alert type="warning" :closable="false" style="margin-top: 10px;">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>录制会在服务器上打开浏览器窗口</li>
+            <li>如果是远程服务器，需要有桌面环境</li>
+            <li>建议在本地环境使用此功能</li>
+          </ul>
+        </el-alert>
+      </div>
+
+      <div v-else>
+        <el-result
+          icon="success"
+          title="正在录制"
+          sub-title="请在弹出的浏览器窗口中进行操作"
+        >
+          <template #extra>
+            <el-button type="danger" @click="stopRecording" :loading="stoppingRecord">
+              停止录制
+            </el-button>
+          </template>
+        </el-result>
+      </div>
+
+      <template #footer>
+        <div v-if="!recordingSessionId">
+          <el-button @click="showRecordDialog = false">取消</el-button>
+          <el-button
+            type="primary"
+            @click="startRecording"
+            :loading="startingRecord"
+            :disabled="!recordTargetUrl"
+          >
+            开始录制
+          </el-button>
+        </div>
+        <div v-else>
+          <el-button @click="cancelRecording">取消录制</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { testCaseAPI, testRunAPI } from '../api'
+import { MagicStick, VideoCamera } from '@element-plus/icons-vue'
+import { testCaseAPI, testRunAPI, projectAPI } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -141,6 +241,15 @@ const currentStep = ref(0)
 const generating = ref(false)
 const saving = ref(false)
 const savedCaseId = ref(null)
+const scriptGenerated = ref(false)
+const project = ref(null) // 项目信息
+
+// 录制相关
+const showRecordDialog = ref(false)
+const startingRecord = ref(false)
+const stoppingRecord = ref(false)
+const recordingSessionId = ref(null)
+const recordTargetUrl = ref('')
 
 const form = reactive({
   naturalLanguage: ''
@@ -181,9 +290,8 @@ const generateTestCase = async () => {
 }
 
 const generateScript = async () => {
-  generating.value = true
+  // 先创建一个临时用例（包含空脚本）
   try {
-    // 先创建一个临时用例（包含空脚本）
     const tempCase = await testCaseAPI.create(projectId, {
       project_id: parseInt(projectId),
       name: generatedCase.name,
@@ -195,17 +303,31 @@ const generateScript = async () => {
     })
 
     savedCaseId.value = tempCase.id
-
-    // 生成脚本
-    const scriptResult = await testCaseAPI.generateScript(tempCase.id)
-    Object.assign(generatedScript, scriptResult.playwright_script)
-    
     currentStep.value = 2
+  } catch (error) {
+    ElMessage.error(error.response?.data?.detail || '创建用例失败')
+  }
+}
+
+const generateScriptByLLM = async () => {
+  generating.value = true
+  try {
+    // 使用LLM生成脚本
+    const scriptResult = await testCaseAPI.generateScript(savedCaseId.value)
+    Object.assign(generatedScript, scriptResult.playwright_script)
+    scriptGenerated.value = true
   } catch (error) {
     ElMessage.error(error.response?.data?.detail || '生成脚本失败')
   } finally {
     generating.value = false
   }
+}
+
+const resetScriptGeneration = () => {
+  scriptGenerated.value = false
+  generatedScript.browser = 'chromium'
+  generatedScript.viewport = { width: 1280, height: 720 }
+  generatedScript.steps = []
 }
 
 const saveTestCase = async () => {
@@ -234,6 +356,126 @@ const executeTest = async () => {
     ElMessage.error('执行失败')
   }
 }
+
+// 开始录制
+const startRecording = async () => {
+  if (!recordTargetUrl.value) {
+    ElMessage.error('请输入目标网址')
+    return
+  }
+
+  startingRecord.value = true
+  try {
+    // 确保URL以 http:// 或 https:// 开头
+    let targetUrl = recordTargetUrl.value
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      targetUrl = 'https://' + targetUrl
+    }
+
+    const response = await fetch('http://localhost:8000/api/record/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      },
+      body: JSON.stringify({
+        target_url: targetUrl,
+        project_id: parseInt(projectId)
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error('启动录制失败')
+    }
+
+    const data = await response.json()
+    recordingSessionId.value = data.session_id
+
+    ElMessage.success('录制已启动，请在浏览器窗口中操作')
+  } catch (error) {
+    ElMessage.error('启动录制失败: ' + error.message)
+  } finally {
+    startingRecord.value = false
+  }
+}
+
+// 停止录制
+const stopRecording = async () => {
+  stoppingRecord.value = true
+  try {
+    const response = await fetch(`http://localhost:8000/api/record/${recordingSessionId.value}/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error('停止录制失败')
+    }
+
+    const data = await response.json()
+
+    // 自动填充到脚本
+    Object.assign(generatedScript, data.playwright_script)
+    scriptGenerated.value = true
+
+    ElMessage.success('录制完成，脚本已自动生成')
+
+    // 关闭录制对话框
+    showRecordDialog.value = false
+    recordingSessionId.value = null
+  } catch (error) {
+    ElMessage.error('停止录制失败: ' + error.message)
+  } finally {
+    stoppingRecord.value = false
+  }
+}
+
+// 取消录制
+const cancelRecording = async () => {
+  if (recordingSessionId.value) {
+    await stopRecording()
+  }
+  showRecordDialog.value = false
+  recordingSessionId.value = null
+}
+
+// 加载项目信息
+const loadProject = async () => {
+  try {
+    project.value = await projectAPI.get(projectId)
+  } catch (error) {
+    console.error('加载项目信息失败:', error)
+  }
+}
+
+// 显示录制对话框前设置默认 URL
+const handleShowRecordDialog = () => {
+  // 优先从项目 base_url 读取
+  if (project.value?.base_url) {
+    recordTargetUrl.value = project.value.base_url
+  }
+  // 其次从自然语言描述中提取
+  else if (form.naturalLanguage) {
+    const urlMatch = form.naturalLanguage.match(/(https?:\/\/[^\s,、。]+)/)
+    if (urlMatch) {
+      recordTargetUrl.value = urlMatch[1]
+    }
+  }
+  
+  // 如果都没有，留空由用户输入
+  if (!recordTargetUrl.value) {
+    recordTargetUrl.value = ''
+  }
+  
+  showRecordDialog.value = true
+}
+
+onMounted(() => {
+  loadProject()
+})
 </script>
 
 <style scoped>

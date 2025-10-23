@@ -8,6 +8,7 @@
           <span>用例信息</span>
           <div>
             <el-button type="primary" @click="handleEdit">编辑</el-button>
+            <el-button type="warning" @click="showRecordGuide">🎥 录制脚本</el-button>
             <el-button type="success" @click="handleExecute">执行测试</el-button>
             <el-button @click="handleViewHistory">查看历史</el-button>
             <el-button type="danger" @click="handleDelete">删除</el-button>
@@ -113,6 +114,79 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 录制指南对话框 -->
+    <el-dialog v-model="showRecordDialog" title="🎥 录制脚本" width="600px">
+      <div v-if="!recordingSessionId">
+        <el-alert
+          title="点击'开始录制'后，系统会打开浏览器窗口"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px;"
+        />
+
+        <el-form label-width="100px">
+          <el-form-item label="目标网址" required>
+            <el-input
+              v-model="recordTargetUrl"
+              placeholder="请输入要测试的网站地址"
+              clearable
+            >
+              <template #prepend>https://</template>
+            </el-input>
+          </el-form-item>
+        </el-form>
+
+        <el-alert type="warning" :closable="false" style="margin-top: 10px;">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li>录制会在服务器上打开浏览器窗口</li>
+            <li>如果是远程服务器，需要有桌面环境</li>
+            <li>建议在本地环境使用此功能</li>
+          </ul>
+        </el-alert>
+      </div>
+
+      <div v-else>
+        <el-result
+          icon="success"
+          title="正在录制"
+          sub-title="请在弹出的浏览器窗口中进行操作"
+        >
+          <template #extra>
+            <el-button type="danger" @click="stopRecording" :loading="stoppingRecord">
+              停止录制
+            </el-button>
+          </template>
+        </el-result>
+
+        <el-alert type="info" :closable="false" style="margin-top: 20px;">
+          <p style="margin: 0;">操作步骤：</p>
+          <ol style="margin: 10px 0 0 0; padding-left: 20px;">
+            <li>在浏览器中进行你的测试操作</li>
+            <li>Playwright Inspector 会自动记录代码</li>
+            <li>操作完成后点击上面的"停止录制"按钮</li>
+            <li>系统会自动转换并填充脚本</li>
+          </ol>
+        </el-alert>
+      </div>
+
+      <template #footer>
+        <div v-if="!recordingSessionId">
+          <el-button @click="showRecordDialog = false">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="startRecording" 
+            :loading="startingRecord"
+            :disabled="!recordTargetUrl"
+          >
+            开始录制
+          </el-button>
+        </div>
+        <div v-else>
+          <el-button @click="cancelRecording">取消录制</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -120,7 +194,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { testCaseAPI, testRunAPI } from '../api'
+import { testCaseAPI, testRunAPI, projectAPI } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -129,7 +203,13 @@ const loading = ref(false)
 const saving = ref(false)
 const regenerating = ref(false)
 const showEditDialog = ref(false)
+const showRecordDialog = ref(false)
+const startingRecord = ref(false)
+const stoppingRecord = ref(false)
+const recordingSessionId = ref(null)
+const recordTargetUrl = ref('')
 const testCase = ref(null)
+const project = ref(null) // 项目信息
 const editForm = ref({
   name: '',
   description: '',
@@ -145,6 +225,10 @@ const loadTestCase = async () => {
   loading.value = true
   try {
     testCase.value = await testCaseAPI.get(caseId)
+    // 加载项目信息（用于获取 base_url）
+    if (testCase.value.project_id) {
+      project.value = await projectAPI.get(testCase.value.project_id)
+    }
   } catch (error) {
     ElMessage.error('加载测试用例失败')
   } finally {
@@ -156,7 +240,7 @@ const goBack = () => {
   router.back()
 }
 
-const handleEdit = () => {
+const handleEdit = (skipScriptReload = false) => {
   editForm.value = {
     name: testCase.value.name,
     description: testCase.value.description,
@@ -166,7 +250,11 @@ const handleEdit = () => {
   
   // 将标准化步骤和 Playwright 脚本转为 JSON 字符串以便编辑
   standardStepsJson.value = JSON.stringify(testCase.value.standard_steps, null, 2)
-  playwrightScriptJson.value = JSON.stringify(testCase.value.playwright_script, null, 2)
+  
+  // 如果 skipScriptReload 为 true，不要重新读取 playwright_script（用于录制后保留新脚本）
+  if (!skipScriptReload) {
+    playwrightScriptJson.value = JSON.stringify(testCase.value.playwright_script, null, 2)
+  }
   
   showEditDialog.value = true
 }
@@ -282,6 +370,115 @@ const handleDelete = async () => {
       ElMessage.error(error.response?.data?.detail || '删除失败')
     }
   }
+}
+
+// 显示录制指南
+const showRecordGuide = () => {
+  // 优先从项目 base_url 读取
+  if (project.value?.base_url) {
+    recordTargetUrl.value = project.value.base_url
+  }
+  // 其次从自然语言描述中提取
+  else if (testCase.value?.natural_language) {
+    const urlMatch = testCase.value.natural_language.match(/(https?:\/\/[^\s,、。]+)/)
+    if (urlMatch) {
+      recordTargetUrl.value = urlMatch[1]
+    }
+  }
+  
+  // 如果都没有，留空由用户输入
+  if (!recordTargetUrl.value) {
+    recordTargetUrl.value = ''
+  }
+  
+  showRecordDialog.value = true
+}
+
+// 开始录制
+const startRecording = async () => {
+  if (!recordTargetUrl.value) {
+    ElMessage.error('请输入目标网址')
+    return
+  }
+  
+  startingRecord.value = true
+  try {
+    // 确保URL以 http:// 或 https:// 开头
+    let targetUrl = recordTargetUrl.value
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      targetUrl = 'https://' + targetUrl
+    }
+    
+    const response = await fetch('http://localhost:8000/api/record/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      },
+      body: JSON.stringify({
+        target_url: targetUrl,
+        project_id: testCase.value.project_id
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error('启动录制失败')
+    }
+    
+    const data = await response.json()
+    recordingSessionId.value = data.session_id
+    
+    ElMessage.success('录制已启动，请在浏览器窗口中操作')
+  } catch (error) {
+    ElMessage.error('启动录制失败: ' + error.message)
+  } finally {
+    startingRecord.value = false
+  }
+}
+
+// 停止录制
+const stopRecording = async () => {
+  stoppingRecord.value = true
+  try {
+    const response = await fetch(`http://localhost:8000/api/record/${recordingSessionId.value}/stop`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error('停止录制失败')
+    }
+    
+    const data = await response.json()
+    
+    // 自动填充到编辑框
+    playwrightScriptJson.value = JSON.stringify(data.playwright_script, null, 2)
+    
+    ElMessage.success('录制完成，脚本已自动生成，请检查后保存')
+    
+    // 关闭录制对话框
+    showRecordDialog.value = false
+    recordingSessionId.value = null
+    
+    // 自动打开编辑对话框，但不重新加载 playwright_script（保留录制的新脚本）
+    handleEdit(true)
+  } catch (error) {
+    ElMessage.error('停止录制失败: ' + error.message)
+  } finally {
+    stoppingRecord.value = false
+  }
+}
+
+// 取消录制
+const cancelRecording = async () => {
+  if (recordingSessionId.value) {
+    await stopRecording()
+  }
+  showRecordDialog.value = false
+  recordingSessionId.value = null
 }
 
 onMounted(() => {
