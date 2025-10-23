@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     MAX_EXECUTION_TIME: int = 300  # 5分钟
     
     # CORS配置
-    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"]
     
     class Config:
         env_file = ".env"

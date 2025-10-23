@@ -174,11 +174,9 @@
           <el-form-item label="目标网址" required>
             <el-input
               v-model="recordTargetUrl"
-              placeholder="请输入要测试的网站地址"
+              placeholder="请输入完整的网站地址（包含 http:// 或 https://）"
               clearable
-            >
-              <template #prepend>https://</template>
-            </el-input>
+            />
           </el-form-item>
         </el-form>
 
@@ -366,11 +364,8 @@ const startRecording = async () => {
 
   startingRecord.value = true
   try {
-    // 确保URL以 http:// 或 https:// 开头
-    let targetUrl = recordTargetUrl.value
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      targetUrl = 'https://' + targetUrl
-    }
+    // 直接使用URL，不再自动添加https://
+    const targetUrl = recordTargetUrl.value
 
     const response = await fetch('http://localhost:8000/api/record/start', {
       method: 'POST',

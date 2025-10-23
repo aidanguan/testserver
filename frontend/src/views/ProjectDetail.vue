@@ -27,9 +27,24 @@
         
         <el-table :data="testCases" v-loading="loading" style="margin-top: 20px">
           <el-table-column prop="id" label="编号" width="80" />
-          <el-table-column prop="name" label="用例名称" />
-          <el-table-column prop="description" label="描述" />
-          <el-table-column label="操作" width="350">
+          <el-table-column prop="name" label="用例名称" min-width="150" />
+          <el-table-column prop="description" label="描述" min-width="150" />
+          <el-table-column prop="execution_count" label="执行次数" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag type="warning" size="small">{{ row.execution_count || 0 }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="pass_rate" label="成功率" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag 
+                :type="row.pass_rate >= 80 ? 'success' : row.pass_rate >= 60 ? 'warning' : 'danger'" 
+                size="small"
+              >
+                {{ row.pass_rate || 0 }}%
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="350" fixed="right">
             <template #default="scope">
               <el-button size="small" @click="handleViewCase(scope.row)">
                 查看

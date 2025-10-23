@@ -3,13 +3,15 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from app.database import get_db
 from app.models.user import User
 from app.models.project import Project
 from app.models.test_case import TestCase
+from app.models.test_run import TestRun, LLMVerdict
 from app.schemas.test_case import (
-    TestCaseCreate, TestCaseUpdate, TestCaseResponse,
+    TestCaseCreate, TestCaseUpdate, TestCaseResponse, TestCaseWithStatsResponse,
     NaturalLanguageRequest, StandardCaseResponse,
     ScriptGenerationRequest, ScriptGenerationResponse
 )
@@ -20,13 +22,13 @@ from app.api.dependencies import get_current_user, get_current_admin_user
 router = APIRouter(tags=["测试用例"])
 
 
-@router.get("/projects/{project_id}/cases", response_model=List[TestCaseResponse])
+@router.get("/projects/{project_id}/cases", response_model=List[TestCaseWithStatsResponse])
 async def list_test_cases(
     project_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """获取项目的测试用例列表"""
+    """获取项目的测试用例列表（带统计数据）"""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(
@@ -35,7 +37,33 @@ async def list_test_cases(
         )
     
     test_cases = db.query(TestCase).filter(TestCase.project_id == project_id).all()
-    return [TestCaseResponse.model_validate(tc) for tc in test_cases]
+    
+    result = []
+    for test_case in test_cases:
+        # 计算每个测试用例的统计数据
+        # 执行次数
+        execution_count = db.query(func.count(TestRun.id)).filter(
+            TestRun.test_case_id == test_case.id
+        ).scalar() or 0
+        
+        # 计算成功率（通过率）
+        if execution_count > 0:
+            passed_count = db.query(func.count(TestRun.id)).filter(
+                TestRun.test_case_id == test_case.id,
+                TestRun.llm_verdict == LLMVerdict.PASSED
+            ).scalar() or 0
+            pass_rate = round((passed_count / execution_count) * 100, 2)
+        else:
+            pass_rate = 0.0
+        
+        # 构建响应数据
+        test_case_dict = TestCaseResponse.model_validate(test_case).model_dump()
+        test_case_dict['execution_count'] = execution_count
+        test_case_dict['pass_rate'] = pass_rate
+        
+        result.append(TestCaseWithStatsResponse(**test_case_dict))
+    
+    return result
 
 
 @router.post("/projects/{project_id}/cases", response_model=TestCaseResponse, status_code=status.HTTP_201_CREATED)

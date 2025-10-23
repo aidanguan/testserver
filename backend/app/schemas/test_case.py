@@ -65,6 +65,12 @@ class TestCaseResponse(TestCaseBase):
         from_attributes = True
 
 
+class TestCaseWithStatsResponse(TestCaseResponse):
+    """带统计数据的测试用例响应Schema"""
+    execution_count: int = Field(0, description="执行次数")
+    pass_rate: float = Field(0.0, description="成功率")
+
+
 class NaturalLanguageRequest(BaseModel):
     """自然语言生成用例请求Schema"""
     project_id: int
