@@ -5,29 +5,48 @@ from typing import Dict, Any, List, Optional
 import json
 from openai import OpenAI
 from anthropic import Anthropic
+import httpx
 
 
 class LLMService:
     """LLM服务类"""
     
-    def __init__(self, provider: str, model: str, api_key: str, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, provider: str, model: str, api_key: str, base_url: Optional[str] = None, config: Optional[Dict[str, Any]] = None):
         """
         初始化LLM服务
         
         Args:
-            provider: LLM提供商 (openai, anthropic等)
+            provider: LLM提供商 (openai, anthropic, dashscope, openai-completion)
             model: 模型名称
             api_key: API密钥
+            base_url: 自定义API基础URL
             config: 额外配置 (temperature, max_tokens等)
         """
         self.provider = provider.lower()
         self.model = model
         self.api_key = api_key
+        self.base_url = base_url
         self.config = config or {}
         
         # 初始化客户端
         if self.provider == "openai":
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url if base_url else None
+            )
+        elif self.provider == "openai-completion":
+            # 支持 OpenAI Completion API
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=base_url if base_url else None
+            )
+        elif self.provider == "dashscope":
+            # 阿里云百炼，使用 OpenAI 客户端但指定 DashScope 的 base_url
+            dashscope_base_url = base_url if base_url else "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            self.client = OpenAI(
+                api_key=api_key,
+                base_url=dashscope_base_url
+            )
         elif self.provider == "anthropic":
             self.client = Anthropic(api_key=api_key)
         else:
@@ -98,14 +117,25 @@ class LLMService:
         max_tokens = self.config.get("max_tokens", 2000)
         
         try:
-            if self.provider == "openai":
+            if self.provider in ["openai", "dashscope"]:
+                # OpenAI Chat Completion API 和百炼共用相同的接口
                 response = self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                return response.choices[0].message.content
+                return response.choices[0].message.content or ""
+            
+            elif self.provider == "openai-completion":
+                # OpenAI Completion API (传统接口)
+                response = self.client.completions.create(
+                    model=self.model,
+                    prompt=prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return response.choices[0].text or ""
             
             elif self.provider == "anthropic":
                 response = self.client.messages.create(
@@ -115,6 +145,9 @@ class LLMService:
                     max_tokens=max_tokens
                 )
                 return response.content[0].text
+            
+            else:
+                raise ValueError(f"不支持的提供商: {self.provider}")
             
         except Exception as e:
             raise Exception(f"LLM调用失败: {str(e)}")

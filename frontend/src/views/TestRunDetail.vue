@@ -217,9 +217,15 @@ const getStepStatusText = (status) => {
 }
 
 const getScreenshotUrl = (path) => {
-  // 这里应该返回实际的截图URL
-  // 在实际实现中，需要配置静态文件服务
-  return `/artifacts/${path}`
+  if (!path) return ''
+  
+  // 处理路径：移除 ../artifacts 前缀，将反斜杠改为正斜杠
+  let cleanPath = path.replace(/\\/g, '/')  // 将反斜杠改为正斜杠
+  cleanPath = cleanPath.replace('../artifacts/', '')  // 移除 ../artifacts/ 前缀
+  cleanPath = cleanPath.replace(/^\//, '')  // 移除开头的斜杠
+  
+  // 返回完整的 URL
+  return `http://localhost:8000/artifacts/${cleanPath}`
 }
 
 const loadRunDetail = async () => {

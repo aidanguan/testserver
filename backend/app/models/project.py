@@ -18,6 +18,7 @@ class Project(Base):
     llm_provider = Column(String(50), nullable=False)
     llm_model = Column(String(100), nullable=False)
     llm_api_key = Column(String(255), nullable=False)
+    llm_base_url = Column(String(500), nullable=True, comment='LLM API基础URL')
     llm_config = Column(JSON)
     created_by = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

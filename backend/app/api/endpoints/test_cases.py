@@ -178,6 +178,7 @@ async def generate_case_from_natural_language(
         provider=project.llm_provider,
         model=project.llm_model,
         api_key=api_key,
+        base_url=project.llm_base_url,
         config=project.llm_config
     )
     
@@ -226,6 +227,7 @@ async def generate_playwright_script(
         provider=project.llm_provider,
         model=project.llm_model,
         api_key=api_key,
+        base_url=project.llm_base_url,
         config=project.llm_config
     )
     

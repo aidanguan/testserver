@@ -18,9 +18,10 @@ class ProjectBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
     base_url: str = Field(..., min_length=1, max_length=500)
-    llm_provider: str = Field(..., description="LLM提供商: openai, anthropic等")
+    llm_provider: str = Field(..., description="LLM提供商: openai, anthropic, dashscope, openai-completion")
     llm_model: str = Field(..., description="模型名称")
     llm_api_key: str = Field(..., min_length=1)
+    llm_base_url: Optional[str] = Field(None, description="LLM API自定义基础URL")
     llm_config: Optional[Dict[str, Any]] = None
 
 
@@ -37,6 +38,7 @@ class ProjectUpdate(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_api_key: Optional[str] = None
+    llm_base_url: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
 
 

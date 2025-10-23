@@ -3,6 +3,8 @@ FastAPI主应用
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 from app.config import settings
 from app.api.endpoints import auth, users, projects, test_cases, test_runs
 
@@ -28,6 +30,11 @@ app.include_router(users.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(test_cases.router, prefix="/api")
 app.include_router(test_runs.router, prefix="/api")
+
+# 配置静态文件服务 - 提供测试工件访问
+artifacts_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "artifacts")
+os.makedirs(artifacts_path, exist_ok=True)
+app.mount("/artifacts", StaticFiles(directory=artifacts_path), name="artifacts")
 
 
 @app.get("/")

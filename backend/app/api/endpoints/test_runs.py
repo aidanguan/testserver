@@ -33,7 +33,12 @@ def execute_test_background(
     from sqlalchemy.orm import sessionmaker
     
     # 创建新的数据库会话
-    engine = create_engine(db_url)
+    # SQLite 需要 check_same_thread=False
+    if db_url.startswith("sqlite"):
+        engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    else:
+        engine = create_engine(db_url)
+    
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
     
@@ -97,6 +102,7 @@ def execute_test_background(
                     provider=project.llm_provider,
                     model=project.llm_model,
                     api_key=api_key,
+                    base_url=project.llm_base_url,
                     config=project.llm_config
                 )
                 
@@ -168,8 +174,20 @@ async def execute_test_case(
     db.refresh(test_run)
     
     # 构建数据库URL用于后台任务
-    from app.config import settings as config_settings
-    db_url = f"mysql+pymysql://{config_settings.DB_USER}:{config_settings.DB_PASSWORD}@{config_settings.DB_HOST}:{config_settings.DB_PORT}/{config_settings.DB_NAME}?charset=utf8mb4"
+    # 使用 SQLite - 需要从 app/api/endpoints/ 往上4层到 backend/
+    import os
+    # __file__ -> app/api/endpoints/test_runs.py
+    # 需要4个 dirname 到达 backend/
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), 
+        "ui_test_platform.db"
+    )
+    db_url = f"sqlite:///{db_path}"
+    print(f"后台任务使用数据库路径: {db_path}")
+    
+    # 如果需要使用 MySQL，取消下面的注释并注释掉上面的 SQLite 配置
+    # from app.config import settings as config_settings
+    # db_url = f"mysql+pymysql://{config_settings.DB_USER}:{config_settings.DB_PASSWORD}@{config_settings.DB_HOST}:{config_settings.DB_PORT}/{config_settings.DB_NAME}?charset=utf8mb4"
     
     # 添加后台任务
     background_tasks.add_task(
@@ -204,17 +222,32 @@ async def get_test_run(
     # 获取测试用例信息
     test_case = db.query(TestCase).filter(TestCase.id == test_run.test_case_id).first()
     
-    response = TestRunDetailResponse.model_validate(test_run)
-    response.steps = [StepExecutionResponse.model_validate(s) for s in steps]
+    # 构建响应数据
+    response_data = {
+        "id": test_run.id,
+        "test_case_id": test_run.test_case_id,
+        "status": test_run.status,
+        "trigger_by": test_run.trigger_by,
+        "start_time": test_run.start_time,
+        "end_time": test_run.end_time,
+        "llm_verdict": test_run.llm_verdict,
+        "llm_reason": test_run.llm_reason,
+        "error_message": test_run.error_message,
+        "artifacts_path": test_run.artifacts_path,
+        "created_at": test_run.created_at,
+        "steps": [StepExecutionResponse.model_validate(s) for s in steps],
+        "test_case": None
+    }
+    
     if test_case:
-        response.test_case = {
+        response_data["test_case"] = {
             "id": test_case.id,
             "name": test_case.name,
             "description": test_case.description,
             "project_id": test_case.project_id
         }
     
-    return response
+    return TestRunDetailResponse(**response_data)
 
 
 @router.get("/runs", response_model=List[TestRunResponse])

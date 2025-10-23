@@ -37,6 +37,9 @@
           <el-descriptions-item label="测试站点">{{ project?.base_url }}</el-descriptions-item>
           <el-descriptions-item label="LLM提供商">{{ project?.llm_provider }}</el-descriptions-item>
           <el-descriptions-item label="LLM模型">{{ project?.llm_model }}</el-descriptions-item>
+          <el-descriptions-item label="LLM Base URL" v-if="project?.llm_base_url">
+            {{ project?.llm_base_url }}
+          </el-descriptions-item>
         </el-descriptions>
       </el-tab-pane>
     </el-tabs>

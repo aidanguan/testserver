@@ -67,16 +67,28 @@
         <el-form-item label="LLM提供商" required>
           <el-select v-model="projectForm.llm_provider" style="width: 100%">
             <el-option label="OpenAI" value="openai" />
+            <el-option label="OpenAI Completion API" value="openai-completion" />
             <el-option label="Anthropic" value="anthropic" />
+            <el-option label="阿里云百炼 (DashScope)" value="dashscope" />
           </el-select>
         </el-form-item>
         
         <el-form-item label="模型名称" required>
-          <el-input v-model="projectForm.llm_model" placeholder="gpt-4" />
+          <el-input v-model="projectForm.llm_model" placeholder="gpt-4 / qwen-plus / claude-3" />
         </el-form-item>
         
         <el-form-item label="API密钥" required>
           <el-input v-model="projectForm.llm_api_key" type="password" show-password />
+        </el-form-item>
+        
+        <el-form-item label="API Base URL" prop="llm_base_url">
+          <el-input 
+            v-model="projectForm.llm_base_url" 
+            placeholder="可选，留空使用默认值（如 https://api.openai.com/v1）" 
+          />
+          <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+            百炼默认: https://dashscope.aliyuncs.com/compatible-mode/v1
+          </div>
         </el-form-item>
       </el-form>
       
@@ -114,7 +126,8 @@ const projectForm = reactive({
   base_url: '',
   llm_provider: 'openai',
   llm_model: 'gpt-4',
-  llm_api_key: ''
+  llm_api_key: '',
+  llm_base_url: ''
 })
 
 const loadProjects = async () => {
@@ -140,7 +153,8 @@ const handleCreate = async () => {
       base_url: '',
       llm_provider: 'openai',
       llm_model: 'gpt-4',
-      llm_api_key: ''
+      llm_api_key: '',
+      llm_base_url: ''
     })
     await loadProjects()
   } catch (error) {
