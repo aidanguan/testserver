@@ -44,6 +44,10 @@ Thumbs.db
 # Artifacts
 artifacts/runs/
 
+# Midscene test reports and temporary files
+backend/midscene/midscene_run/
+*.har
+
 # Database
 *.sql.backup
 *.db
