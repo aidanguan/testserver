@@ -57,3 +57,4 @@ backend/midscene/midscene_run/
 .coverage
 htmlcov/
 .pytest_cache/
+backend/artifacts/runs/
