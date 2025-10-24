@@ -23,6 +23,7 @@ class ProjectBase(BaseModel):
     llm_api_key: str = Field(..., min_length=1)
     llm_base_url: Optional[str] = Field(None, description="LLM API自定义基础URL")
     llm_config: Optional[Dict[str, Any]] = None
+    executor_type: str = Field("playwright", description="执行器类型: playwright 或 midscene")
 
 
 class ProjectCreate(ProjectBase):
@@ -40,6 +41,7 @@ class ProjectUpdate(BaseModel):
     llm_api_key: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_config: Optional[Dict[str, Any]] = None
+    executor_type: Optional[str] = Field(None, description="执行器类型: playwright 或 midscene")
 
 
 class ProjectResponse(ProjectBase):

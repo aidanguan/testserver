@@ -66,11 +66,11 @@ def execute_test_background(
             db.commit()
             return
         
-        # 执行Playwright脚本
+        # 执行测试脚本（根据执行器类型选择）
         # 初始化LLM服务用于实时视觉分析
         llm_service = None
+        api_key = decrypt_api_key(project.llm_api_key)  # 提前解密API密钥
         try:
-            api_key = decrypt_api_key(project.llm_api_key)
             llm_service = LLMService(
                 provider=project.llm_provider,
                 model=project.llm_model,
@@ -78,19 +78,103 @@ def execute_test_background(
                 base_url=project.llm_base_url,
                 config=project.llm_config
             )
-            print(f"\ud83e\udd16 LLM服务初始化成功，将进行实时视觉分析")
+            print(f"🤖 LLM服务初始化成功，将进行实时视觉分析")
         except Exception as e:
-            print(f"\u26a0\ufe0f LLM服务初始化失败: {e}，将跳过视觉分析")
+            print(f"⚠️ LLM服务初始化失败: {e}，将跳过视觉分析")
         
-        executor = PlaywrightExecutor(
-            artifacts_base_path=settings.ARTIFACTS_PATH,
-            llm_service=llm_service,
-            expected_result=test_case.expected_result
-        )
-        exec_result = executor.execute_script(
-            script=test_case.playwright_script,
-            run_id=test_run_id
-        )
+        # 根据执行器类型选择执行器
+        executor_type = test_case.executor_type if hasattr(test_case, 'executor_type') else 'playwright'
+        
+        if executor_type == 'midscene':
+            # 使用 Midscene 执行器
+            print(f"🌟 使用 Midscene AI 执行器")
+            from app.services.midscene_executor import MidsceneExecutor
+            
+            # 检查是否有保存的认证状态
+            from app.services.auth_state_manager import AuthStateManager
+            auth_manager = AuthStateManager()
+            auth_state_path = auth_manager.load_auth_state(project.id)
+            
+            if auth_state_path:
+                print(f"✅ 找到认证状态文件: {auth_state_path}")
+            else:
+                print(f"ℹ️ 未找到认证状态，将使用新的浏览器会话")
+            
+            executor = MidsceneExecutor(
+                artifacts_base_path=settings.ARTIFACTS_PATH,
+                llm_service=llm_service,
+                expected_result=test_case.expected_result,
+                auth_state_path=auth_state_path  # 传递认证状态
+            )
+            
+            # 准备环境变量
+            env_vars = {}
+            
+            # 传递 LLM API Key 和 Base URL（支持多种 provider）
+            print(f"📝 项目 LLM 配置 - Provider: {project.llm_provider}, Model: {project.llm_model}")
+            print(f"📝 项目 Base URL: {project.llm_base_url}")
+            
+            if project.llm_provider and project.llm_provider.lower() in ['openai', 'dashscope', 'anthropic']:
+                # OpenAI 及兼容接口（包括阿里云百炼等）
+                env_vars['OPENAI_API_KEY'] = api_key
+                print(f"✅ 设置 OPENAI_API_KEY: {api_key[:10]}...")
+                
+                if project.llm_base_url:
+                    env_vars['OPENAI_BASE_URL'] = project.llm_base_url
+                    print(f"✅ 设置 OPENAI_BASE_URL: {project.llm_base_url}")
+                
+                # 传递模型名称 - Midscene 使用 MIDSCENE_MODEL_NAME
+                if project.llm_model:
+                    env_vars['MIDSCENE_MODEL_NAME'] = project.llm_model
+                    print(f"✅ 设置 MIDSCENE_MODEL_NAME: {project.llm_model}")
+                
+                # 特殊处理：阿里云百炼 Qwen VL 模型需要设置额外标志
+                if (project.llm_provider and 
+                    project.llm_provider.lower() == 'dashscope' and 
+                    project.llm_model and 
+                    'qwen' in project.llm_model.lower()):
+                    env_vars['MIDSCENE_USE_QWEN_VL'] = '1'
+                    print(f"✅ 设置 MIDSCENE_USE_QWEN_VL=1 (阿里云 Qwen VL 模型)")
+            
+            print(f"🔑 环境变量已准备: {list(env_vars.keys())}")
+            
+            # 根据执行器类型选择脚本
+            script_to_use = test_case.midscene_script if test_case.executor_type == "midscene" else test_case.playwright_script
+            print(f"📦 使用 {'Midscene' if test_case.executor_type == 'midscene' else 'Playwright'} 脚本，步骤数: {len(script_to_use.get('steps', []))}")
+            
+            # 检查脚本是否为空
+            if not script_to_use or not script_to_use.get("steps"):
+                raise Exception(f"没有配置 {'Midscene' if test_case.executor_type == 'midscene' else 'Playwright'} 脚本或脚本为空")
+            
+            exec_result = executor.execute_script(
+                script=script_to_use,
+                run_id=test_run_id,
+                env_vars=env_vars
+            )
+        else:
+            # 使用传统 Playwright 执行器
+            print(f"🎭 使用 Playwright 执行器")
+            
+            # 检查是否有保存的认证状态
+            from app.services.auth_state_manager import AuthStateManager
+            auth_manager = AuthStateManager()
+            auth_state_path = auth_manager.load_auth_state(project.id)
+            
+            if auth_state_path:
+                print(f"✅ 找到认证状态文件: {auth_state_path}")
+            else:
+                print(f"ℹ️ 未找到认证状态，将使用新的浏览器会话")
+            
+            executor = PlaywrightExecutor(
+                artifacts_base_path=settings.ARTIFACTS_PATH,
+                llm_service=llm_service,
+                expected_result=test_case.expected_result,
+                auth_state_path=auth_state_path  # 传递认证状态
+            )
+            exec_result = executor.execute_script(
+                script=test_case.playwright_script,
+                run_id=test_run_id
+            )
         
         # 保存步骤执行记录
         for step_data in exec_result.get("steps", []):

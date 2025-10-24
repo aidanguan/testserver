@@ -75,6 +75,34 @@
       <!-- 步骤3: 生成脚本 -->
       <div v-if="currentStep === 2">
         <div v-if="!scriptGenerated">
+          <h3>选择执行器类型</h3>
+          <div style="margin: 20px 0;">
+            <el-radio-group v-model="executorType" size="large">
+              <el-radio value="playwright" border>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-icon :size="20"><VideoPlay /></el-icon>
+                  <span>Playwright</span>
+                  <el-tag size="small" type="info">传统</el-tag>
+                </div>
+                <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                  基于 CSS 选择器的精确控制
+                </div>
+              </el-radio>
+              <el-radio value="midscene" border style="margin-left: 20px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-icon :size="20"><MagicStick /></el-icon>
+                  <span>Midscene AI</span>
+                  <el-tag size="small" type="warning">智能</el-tag>
+                </div>
+                <div style="font-size: 12px; color: #909399; margin-top: 4px;">
+                  基于自然语言的 AI 智能定位
+                </div>
+              </el-radio>
+            </el-radio-group>
+          </div>
+
+          <el-divider />
+
           <h3>选择生成方式</h3>
           <div style="margin-top: 20px; display: flex; gap: 20px; justify-content: center;">
             <el-card shadow="hover" style="width: 300px; cursor: pointer;" @click="generateScriptByLLM">
@@ -227,7 +255,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { MagicStick, VideoCamera } from '@element-plus/icons-vue'
+import { MagicStick, VideoCamera, VideoPlay } from '@element-plus/icons-vue'
 import { testCaseAPI, testRunAPI, projectAPI } from '../api'
 
 const route = useRoute()
@@ -241,6 +269,7 @@ const saving = ref(false)
 const savedCaseId = ref(null)
 const scriptGenerated = ref(false)
 const project = ref(null) // 项目信息
+const executorType = ref('playwright') // 执行器类型
 
 // 录制相关
 const showRecordDialog = ref(false)
@@ -310,8 +339,18 @@ const generateScript = async () => {
 const generateScriptByLLM = async () => {
   generating.value = true
   try {
-    // 使用LLM生成脚本
-    const scriptResult = await testCaseAPI.generateScript(savedCaseId.value)
+    // 根据选择的执行器类型调用不同的 API
+    let scriptResult
+    if (executorType.value === 'midscene') {
+      // 生成 Midscene 脚本
+      scriptResult = await testCaseAPI.generateMidsceneScript(savedCaseId.value)
+      ElMessage.success('Midscene AI 脚本生成成功')
+    } else {
+      // 生成传统 Playwright 脚本
+      scriptResult = await testCaseAPI.generateScript(savedCaseId.value)
+      ElMessage.success('Playwright 脚本生成成功')
+    }
+    
     Object.assign(generatedScript, scriptResult.playwright_script)
     scriptGenerated.value = true
   } catch (error) {
@@ -331,10 +370,20 @@ const resetScriptGeneration = () => {
 const saveTestCase = async () => {
   saving.value = true
   try {
-    // 更新用例，添加脚本
-    await testCaseAPI.update(savedCaseId.value, {
-      playwright_script: generatedScript
-    })
+    // 根据执行器类型，将脚本保存到不同字段
+    const updateData = {
+      executor_type: executorType.value
+    }
+    
+    if (executorType.value === 'midscene') {
+      // Midscene 脚本存储为 JSON 字符串
+      updateData.midscene_script = JSON.stringify(generatedScript)
+    } else {
+      // Playwright 脚本存储为对象
+      updateData.playwright_script = JSON.stringify(generatedScript)
+    }
+    
+    await testCaseAPI.update(savedCaseId.value, updateData)
     
     ElMessage.success('测试用例保存成功')
     currentStep.value = 3

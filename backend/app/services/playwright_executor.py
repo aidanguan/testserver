@@ -12,7 +12,7 @@ from pathlib import Path
 class PlaywrightExecutor:
     """Playwright脚本执行器"""
     
-    def __init__(self, artifacts_base_path: str, llm_service=None, expected_result: str = None):
+    def __init__(self, artifacts_base_path: str, llm_service=None, expected_result: Optional[str] = None, auth_state_path: Optional[str] = None):
         """
         初始化执行器
         
@@ -20,10 +20,12 @@ class PlaywrightExecutor:
             artifacts_base_path: 工件存储基础路径
             llm_service: LLM服务实例（用于视觉分析）
             expected_result: 预期结果描述
+            auth_state_path: 认证状态文件路径（可选）
         """
         self.artifacts_base_path = artifacts_base_path
         self.llm_service = llm_service
         self.expected_result = expected_result
+        self.auth_state_path = auth_state_path  # 新增：认证状态路径
         self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
@@ -80,12 +82,19 @@ class PlaywrightExecutor:
             else:
                 self.browser = self.playwright.chromium.launch(headless=False)  # 改为有头模式
             
-            # 创建上下文
+            # 创建上下文（支持加载认证状态）
             viewport = script.get("viewport", {"width": 1280, "height": 720})
-            self.context = self.browser.new_context(
-                viewport=viewport,
-                record_har_path=os.path.join(network_path, "traffic.har")
-            )
+            context_options = {
+                "viewport": viewport,
+                "record_har_path": os.path.join(network_path, "traffic.har")
+            }
+            
+            # 如果有认证状态文件，加载它
+            if self.auth_state_path and os.path.exists(self.auth_state_path):
+                context_options["storage_state"] = self.auth_state_path
+                print(f"✅ 加载认证状态: {self.auth_state_path}")
+            
+            self.context = self.browser.new_context(**context_options)
             
             # 创建页面
             self.page = self.context.new_page()
@@ -178,7 +187,9 @@ class PlaywrightExecutor:
                 screenshot_name = f"step_{step['index']}.png"
                 screenshot_path = os.path.join(screenshots_path, screenshot_name)
                 self.page.screenshot(path=screenshot_path, full_page=True)
-                step_result["screenshot_path"] = screenshot_path
+                # 保存相对路径
+                relative_path = screenshot_path.replace(self.artifacts_base_path, "").replace("\\", "/").lstrip("/")
+                step_result["screenshot_path"] = relative_path
             
             elif action == "assertText":
                 element = self.page.locator(selector)
@@ -199,7 +210,9 @@ class PlaywrightExecutor:
                 screenshot_name = f"step_{step['index']}.png"
                 screenshot_path = os.path.join(screenshots_path, screenshot_name)
                 self.page.screenshot(path=screenshot_path, full_page=True)
-                step_result["screenshot_path"] = screenshot_path
+                # 保存相对路径（相对于 artifacts 目录），以便前端可以访问
+                relative_path = screenshot_path.replace(self.artifacts_base_path, "").replace("\\", "/").lstrip("/")
+                step_result["screenshot_path"] = relative_path
             
         except Exception as e:
             step_result["status"] = "failed"
@@ -221,3 +234,41 @@ class PlaywrightExecutor:
                 self.playwright.stop()
         except Exception as e:
             print(f"清理资源时出错: {e}")
+    
+    def save_auth_state(self, output_path: str) -> Dict[str, Any]:
+        """
+        保存当前浏览器上下文的认证状态
+        
+        Args:
+            output_path: 输出文件路径
+            
+        Returns:
+            保存结果
+        """
+        try:
+            if not self.context:
+                return {
+                    "success": False,
+                    "message": "浏览器上下文未初始化"
+                }
+            
+            # 保存认证状态
+            self.context.storage_state(path=output_path)
+            
+            # 读取并验证
+            with open(output_path, 'r', encoding='utf-8') as f:
+                state_data = json.load(f)
+            
+            return {
+                "success": True,
+                "message": f"认证状态已保存（包含 {len(state_data.get('cookies', []))} 个 cookies）",
+                "file_path": output_path,
+                "cookies_count": len(state_data.get('cookies', [])),
+                "origins_count": len(state_data.get('origins', []))
+            }
+        
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"保存认证状态失败: {str(e)}"
+            }

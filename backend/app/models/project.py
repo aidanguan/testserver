@@ -21,6 +21,7 @@ class Project(Base):
     llm_api_key: Mapped[str] = mapped_column(String(255), nullable=False)
     llm_base_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, comment='LLM API基础URL')
     llm_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    executor_type: Mapped[str] = mapped_column(String(50), nullable=False, default='playwright', server_default='playwright', comment='执行器类型: playwright 或 midscene')
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -32,6 +32,7 @@ class TestCaseBase(BaseModel):
     description: Optional[str] = None
     natural_language: str = Field(..., min_length=1)
     expected_result: str = Field(..., min_length=1)
+    executor_type: str = Field("playwright", description="执行器类型: playwright 或 midscene")
 
 
 class TestCaseCreate(TestCaseBase):
@@ -47,8 +48,10 @@ class TestCaseUpdate(BaseModel):
     description: Optional[str] = None
     natural_language: Optional[str] = None
     standard_steps: Optional[List[Dict[str, Any]]] = None
-    playwright_script: Optional[Dict[str, Any]] = None
+    playwright_script: Optional[str] = None  # 可以是 JSON 字符串或字典
+    midscene_script: Optional[str] = None  # Midscene 脚本（JSON 字符串）
     expected_result: Optional[str] = None
+    executor_type: Optional[str] = Field(None, description="执行器类型: playwright 或 midscene")
 
 
 class TestCaseResponse(TestCaseBase):
@@ -57,6 +60,7 @@ class TestCaseResponse(TestCaseBase):
     project_id: int
     standard_steps: List[Dict[str, Any]]
     playwright_script: Dict[str, Any]
+    midscene_script: Optional[Dict[str, Any]] = None  # Midscene 脚本（可选）
     created_by: int
     created_at: datetime
     updated_at: datetime

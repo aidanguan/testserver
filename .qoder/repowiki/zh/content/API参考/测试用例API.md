@@ -2,14 +2,21 @@
 
 <cite>
 **本文档引用的文件**   
-- [test_cases.py](file://backend/app/api/endpoints/test_cases.py)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py) - *更新了获取测试用例的端点，加入了执行统计数据*
 - [llm_service.py](file://backend/app/services/llm_service.py)
 - [test_case.py](file://backend/app/models/test_case.py)
-- [test_case.py](file://backend/app/schemas/test_case.py)
+- [test_case.py](file://backend/app/schemas/test_case.py) - *新增了带统计数据的响应Schema*
 - [init_db.sql](file://backend/init_db.sql)
 - [DESIGN_DOCUMENT.md](file://DESIGN_DOCUMENT.md)
 - [API_EXAMPLES.md](file://API_EXAMPLES.md)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 更新了[核心端点](#核心端点)部分，将端点路径从`/api/cases/generate-from-nl`更新为`/api/projects/{project_id}/test-cases`
+- 新增了[请求与响应结构](#请求与响应结构)部分，详细说明了`execution_count`和`pass_rate`两个新字段
+- 更新了[使用示例](#使用示例)部分，提供了完整的curl示例，展示了如何通过项目ID创建测试用例
+- 更新了[错误处理](#错误处理)部分，修正了端点路径和错误码描述
 
 ## 目录
 1. [简介](#简介)
@@ -27,12 +34,11 @@
 - [DESIGN_DOCUMENT.md](file://DESIGN_DOCUMENT.md#L1-L498)
 
 ## 核心端点
-系统提供了两个核心端点来支持自然语言到测试用例的转换流程：
+系统提供了核心端点来支持自然语言到测试用例的转换流程：
 
-1. **`POST /api/cases/generate-from-nl`**：从自然语言输入生成标准化测试用例
-2. **`POST /api/cases/generate-script`**：从已生成的标准化用例生成Playwright脚本
+1. **`POST /api/projects/{project_id}/test-cases`**：从自然语言输入创建测试用例
 
-这两个端点共同构成了从自然语言到自动化脚本的完整转换流水线。
+该端点整合了原有的用例生成和创建功能，直接接收自然语言输入并返回生成的标准化测试用例和Playwright脚本。
 
 ```mermaid
 sequenceDiagram
@@ -40,20 +46,16 @@ participant 用户 as 用户
 participant API as API端点
 participant LLM服务 as LLMService
 participant 数据库 as 数据库
-用户->>API : POST /api/cases/generate-from-nl
+用户->>API : POST /api/projects/{project_id}/test-cases
 API->>数据库 : 验证项目是否存在
 数据库-->>API : 项目信息
 API->>LLM服务 : 调用generate_test_case_from_nl
 LLM服务->>LLM服务 : 构建提示词并调用LLM
 LLM服务-->>API : 返回标准化测试用例
-API-->>用户 : 返回标准化用例响应
-用户->>API : POST /api/cases/generate-script
-API->>数据库 : 获取测试用例和项目信息
-数据库-->>API : 测试用例数据
 API->>LLM服务 : 调用generate_playwright_script
 LLM服务->>LLM服务 : 构建提示词并调用LLM
 LLM服务-->>API : 返回Playwright脚本
-API-->>用户 : 返回脚本生成响应
+API-->>用户 : 返回包含std_testcase和script的响应
 ```
 
 **Diagram sources**
@@ -74,10 +76,12 @@ API-->>用户 : 返回脚本生成响应
 - `project_id`: 所属项目ID（整数，必填）
 
 ### 响应体结构
-响应体包含生成的标准化测试用例和Playwright脚本：
+响应体包含生成的标准化测试用例、Playwright脚本以及执行统计数据：
 
 - `std_testcase`: 标准化测试用例，包含名称、描述、标准步骤和预期结果
 - `script`: 生成的Playwright脚本配置，包含浏览器类型、视口尺寸和执行步骤
+- `execution_count`: 执行次数统计（新增字段）
+- `pass_rate`: 成功率（通过率）统计，以百分比表示（新增字段）
 
 ```mermaid
 classDiagram
@@ -87,8 +91,9 @@ class StandardCaseResponse {
 +Dict[] standard_steps
 +string expected_result
 }
-class ScriptGenerationResponse {
-+Dict~string, any~ playwright_script
+class TestCaseWithStatsResponse {
++int execution_count
++float pass_rate
 }
 class TestCaseCreate {
 +int project_id
@@ -99,7 +104,7 @@ class TestCaseCreate {
 +Dict~string, any~ playwright_script
 }
 StandardCaseResponse <|-- TestCaseCreate
-ScriptGenerationResponse <|-- TestCaseCreate
+TestCaseWithStatsResponse <|-- TestCaseCreate
 ```
 
 **Diagram sources**
@@ -132,7 +137,7 @@ CheckResponse --> |是| ExtractJSON["提取JSON内容"]
 CheckResponse --> |否| ReturnError["返回解析错误"]
 ExtractJSON --> ValidateJSON{"JSON格式是否正确?"}
 ValidateJSON --> |是| ReturnSuccess["返回解析结果"]
-ValidateJSON --> |否| ReturnError
+ValidateJSON --> |否| ReturnError["返回解析错误"]
 ReturnSuccess --> End([结束])
 ReturnError --> End
 ```
@@ -171,42 +176,18 @@ active --> draft : 需要修改
 
 ## 使用示例
 ### 完整工作流程
-以下是一个完整的curl示例，展示如何从自然语言输入创建测试用例并生成Playwright脚本：
+以下是一个完整的curl示例，展示如何从自然语言输入创建测试用例：
 
 ```bash
-# 第一步：从自然语言生成标准化测试用例
-curl -X POST http://localhost:8000/api/cases/generate-from-nl \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": 1,
-    "natural_language": "访问登录页面，输入用户名admin和密码admin，点击登录按钮，验证成功跳转到主页"
-  }'
-```
-
-```bash
-# 第二步：使用生成的用例创建测试用例
-curl -X POST http://localhost:8000/api/projects/1/cases \
+# 创建测试用例
+curl -X POST http://localhost:8000/api/projects/1/test-cases \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": 1,
     "name": "用户登录测试",
-    "description": "测试用户登录功能",
-    "natural_language": "访问登录页面，输入用户名admin和密码admin，点击登录按钮",
-    "standard_steps": [...],
-    "playwright_script": {...},
-    "expected_result": "用户成功登录"
-  }'
-```
-
-```bash
-# 第三步：为已创建的测试用例生成Playwright脚本
-curl -X POST http://localhost:8000/api/cases/generate-script \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "test_case_id": 1
+    "nl_input": "访问登录页面，输入用户名admin和密码admin，点击登录按钮，验证成功跳转到主页",
+    "expected_result": "用户成功登录并跳转到主页"
   }'
 ```
 
@@ -218,7 +199,7 @@ curl -X POST http://localhost:8000/api/cases/generate-script \
 
 ### 常见错误场景
 - **项目不存在 (404)**: 当请求中指定的`project_id`在数据库中找不到时，返回404 Not Found错误
-- **LLM服务调用失败 (502)**: 当与LLM服务通信失败时，返回502 Bad Gateway错误
+- **LLM服务调用失败 (500)**: 当与LLM服务通信失败时，返回500 Internal Server Error错误
 - **请求参数错误 (400)**: 当请求体缺少必要字段或字段格式不正确时，返回400 Bad Request错误
 - **权限不足 (403)**: 当用户尝试访问无权访问的资源时，返回403 Forbidden错误
 
@@ -230,12 +211,11 @@ flowchart TD
 Request[收到请求] --> ValidateProject["验证项目是否存在"]
 ValidateProject --> |项目不存在| Return404["返回404错误"]
 ValidateProject --> |项目存在| ValidateLLM["调用LLM服务"]
-ValidateLLM --> |LLM调用失败| Return502["返回502错误"]
+ValidateLLM --> |LLM调用失败| Return500["返回500错误"]
 ValidateLLM --> |LLM调用成功| ProcessResponse["处理LLM响应"]
 ProcessResponse --> |响应解析失败| Return500["返回500错误"]
 ProcessResponse --> |响应解析成功| Return200["返回200成功"]
 Return404 --> End
-Return502 --> End
 Return500 --> End
 Return200 --> End
 ```

@@ -2,10 +2,24 @@
 
 一个创新的自动化测试平台，允许测试人员使用自然语言描述测试意图，自动生成并执行 UI 测试用例。
 
+## 🌟 新增：Midscene AI 集成
+
+**现在支持双执行器模式！**
+
+- 🎭 **Playwright**: 传统、稳定、精确控制
+- 🌟 **Midscene AI**: 视觉驱动、智能定位、自然语言
+
+> 📚 **快速开始**: [MIDSCENE_QUICKSTART.md](./MIDSCENE_QUICKSTART.md)  
+> 📖 **完整指南**: [MIDSCENE_INTEGRATION.md](./MIDSCENE_INTEGRATION.md)  
+> 🎉 **集成总结**: [MIDSCENE_INTEGRATION_SUMMARY.md](./MIDSCENE_INTEGRATION_SUMMARY.md)
+
 ## 🎯 核心特性
 
 - **自然语言驱动**：用自然语言描述测试场景，AI 自动生成标准化测试用例
-- **智能脚本生成**：自动将测试用例转换为 Playwright 执行脚本
+- **双执行器模式**：支持 Playwright 和 Midscene AI 两种执行器，灵活选择
+  - **Playwright**: CSS 选择器定位，精确可控
+  - **Midscene AI**: 自然语言定位，智能适应
+- **智能脚本生成**：自动将测试用例转换为 Playwright 或 Midscene 执行脚本
 - **AI 结果判定**：使用 LLM 智能分析测试结果，提供详细判定理由
 - **完整工件管理**：自动采集截图、日志、HAR 文件等测试证据
 - **项目级配置**：支持多项目管理，每个项目可配置独立的 LLM

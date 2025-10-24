@@ -1,11 +1,21 @@
 # API客户端与通信
 
 <cite>
-**Referenced Files in This Document**   
+**本文档引用的文件**   
 - [client.js](file://frontend/src/api/client.js)
 - [index.js](file://frontend/src/api/index.js)
 - [auth.js](file://frontend/src/stores/auth.js)
+- [ProjectDetail.vue](file://frontend/src/views/ProjectDetail.vue)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py)
+- [test_case.py](file://backend/app/schemas/test_case.py)
 </cite>
+
+## 更新摘要
+**已做更改**   
+- 更新了“API调用示例”部分，以反映测试用例API返回新增统计字段的变更
+- 在“API端点组织与模块化”中补充了`testCaseAPI`返回数据结构的说明
+- 更新了前后端通信序列图，以体现统计数据的返回流程
+- 增加了对后端返回数据结构变更的说明
 
 ## 目录
 1. [引言](#引言)
@@ -66,8 +76,12 @@ API被划分为以下几个主要模块：
 
 每个模块都是一个包含多个API方法的常量对象，这些方法内部调用`apiClient`的`get`、`post`、`put`、`delete`等方法，并传入具体的API路径和参数。
 
+**重要更新**：根据`b97d0a5`提交，`testCaseAPI.listByProject()`方法现在返回的测试用例数据包含新增的执行统计数据，包括`execution_count`（执行次数）和`pass_rate`（通过率）。这些数据由后端在`test_cases.py`中计算并返回，前端`ProjectDetail.vue`组件已更新以显示这些统计信息。
+
 **Section sources**
 - [index.js](file://frontend/src/api/index.js#L5-L145)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L24-L65)
+- [test_case.py](file://backend/app/schemas/test_case.py#L80-L85)
 
 ## API调用示例
 
@@ -75,7 +89,7 @@ API被划分为以下几个主要模块：
 
 ```javascript
 // 导入所需的API模块
-import { projectAPI } from '@/api'
+import { projectAPI, testCaseAPI } from '@/api'
 
 // 获取项目列表
 async function fetchProjects() {
@@ -86,6 +100,21 @@ async function fetchProjects() {
   } catch (error) {
     // 错误处理由拦截器统一管理，此处可根据需要进行额外处理
     console.error('获取项目列表失败:', error)
+  }
+}
+
+// 获取项目的测试用例列表（包含执行统计数据）
+async function fetchTestCases(projectId) {
+  try {
+    const testCases = await testCaseAPI.listByProject(projectId)
+    // 处理包含统计数据的测试用例列表
+    testCases.forEach(tc => {
+      console.log(`用例: ${tc.name}`)
+      console.log(`  执行次数: ${tc.execution_count}`)
+      console.log(`  通过率: ${tc.pass_rate}%`)
+    })
+  } catch (error) {
+    console.error('获取测试用例列表失败:', error)
   }
 }
 
@@ -103,6 +132,7 @@ async function createNewProject(projectData) {
 
 **Section sources**
 - [index.js](file://frontend/src/api/index.js#L25-L50)
+- [ProjectDetail.vue](file://frontend/src/views/ProjectDetail.vue#L70-L75)
 
 ## 错误处理与网络策略
 
@@ -128,18 +158,19 @@ sequenceDiagram
 participant Frontend as "前端 (Vue App)"
 participant Client as "API客户端 (apiClient)"
 participant Backend as "后端 (FastAPI)"
-Frontend->>Client : projectAPI.list()
+Frontend->>Client : testCaseAPI.listByProject(projectId)
 Client->>Client : 请求拦截器
 Client->>Client : 从localStorage读取token
 alt token存在
-Client->>Backend : GET /api/projects<br/>Authorization : Bearer <token>
+Client->>Backend : GET /api/projects/{projectId}/cases<br/>Authorization : Bearer <token>
 else token不存在
-Client->>Backend : GET /api/projects
+Client->>Backend : GET /api/projects/{projectId}/cases
 end
 Backend->>Backend : 验证JWT令牌
 alt 令牌有效
 Backend->>Backend : 执行业务逻辑，查询数据库
-Backend-->>Client : HTTP 200 OK<br/>{code : 0, data : [...]}
+Backend->>Backend : 计算执行次数和通过率
+Backend-->>Client : HTTP 200 OK<br/>{code : 0, data : [{... , execution_count : 5, pass_rate : 80.0}]}
 else 令牌无效或过期
 Backend-->>Client : HTTP 401 Unauthorized
 end
@@ -150,7 +181,7 @@ Frontend->>Frontend : 清除localStorage
 Frontend->>Frontend : 重定向至 /login
 else 响应为200
 Client->>Client : 返回 response.data
-Client-->>Frontend : 项目列表数据
+Client-->>Frontend : 包含统计数据的测试用例列表
 end
 ```
 
@@ -158,3 +189,4 @@ end
 - [client.js](file://frontend/src/api/client.js)
 - [index.js](file://frontend/src/api/index.js)
 - [auth.js](file://frontend/src/stores/auth.js)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L24-L65)

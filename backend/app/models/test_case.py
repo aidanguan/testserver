@@ -21,7 +21,9 @@ class TestCase(Base):
     # JSON 字段：运行时为 JSON 类型，但类型检查时作为 List 和 Dict
     standard_steps: Any = mapped_column(JSON, nullable=False)
     playwright_script: Any = mapped_column(JSON, nullable=False)
+    midscene_script: Any = mapped_column(JSON, nullable=True)  # Midscene 脚本（可选）
     expected_result: Mapped[str] = mapped_column(Text, nullable=False)
+    executor_type: Mapped[str] = mapped_column(String(50), nullable=False, default='playwright', server_default='playwright', comment='执行器类型: playwright 或 midscene')
     created_by: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -97,6 +97,13 @@ export const testCaseAPI = {
     return apiClient.post('/cases/generate-script', {
       test_case_id: testCaseId
     })
+  },
+  
+  // 生成Midscene脚本
+  generateMidsceneScript(testCaseId) {
+    return apiClient.post('/cases/generate-midscene-script', {
+      test_case_id: testCaseId
+    })
   }
 }
 
@@ -147,5 +154,42 @@ export const userAPI = {
   // 删除用户
   delete(id) {
     return apiClient.delete(`/users/${id}`)
+  }
+}
+
+/**
+ * 认证状态管理相关API
+ */
+export const authStateAPI = {
+  // 获取认证状态信息
+  getInfo(projectId) {
+    return apiClient.get(`/projects/${projectId}/auth-state`)
+  },
+  
+  // 创建登录会话
+  createSession(projectId, loginUrl) {
+    return apiClient.post(`/projects/${projectId}/auth-state/create`, {
+      login_url: loginUrl
+    })
+  },
+  
+  // 保存登录状态
+  saveSession(projectId) {
+    return apiClient.post(`/projects/${projectId}/auth-state/save`)
+  },
+  
+  // 取消登录会话
+  cancelSession(projectId) {
+    return apiClient.post(`/projects/${projectId}/auth-state/cancel`)
+  },
+  
+  // 获取会话状态
+  getSessionStatus(projectId) {
+    return apiClient.get(`/projects/${projectId}/auth-state/status`)
+  },
+  
+  // 删除认证状态
+  delete(projectId) {
+    return apiClient.delete(`/projects/${projectId}/auth-state`)
   }
 }

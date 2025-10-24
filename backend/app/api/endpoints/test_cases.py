@@ -144,12 +144,40 @@ async def update_test_case(
         test_case.description = test_case_data.description
     if test_case_data.natural_language:
         test_case.natural_language = test_case_data.natural_language
-    if test_case_data.standard_steps:
+    if test_case_data.standard_steps is not None:
         test_case.standard_steps = test_case_data.standard_steps
-    if test_case_data.playwright_script:
-        test_case.playwright_script = test_case_data.playwright_script
     if test_case_data.expected_result:
         test_case.expected_result = test_case_data.expected_result
+    if test_case_data.executor_type:
+        test_case.executor_type = test_case_data.executor_type
+    
+    # 处理 Playwright 脚本（可能是字符串或字典）
+    if test_case_data.playwright_script is not None:
+        import json
+        if isinstance(test_case_data.playwright_script, str):
+            # 如果是字符串，尝试解析为 JSON
+            try:
+                test_case.playwright_script = json.loads(test_case_data.playwright_script)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Playwright 脚本格式错误，请提供有效的 JSON"
+                )
+        else:
+            test_case.playwright_script = test_case_data.playwright_script
+    
+    # 处理 Midscene 脚本（JSON 字符串）
+    if test_case_data.midscene_script is not None:
+        import json
+        try:
+            # 验证是否为有效的 JSON
+            midscene_data = json.loads(test_case_data.midscene_script)
+            test_case.midscene_script = midscene_data
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Midscene 脚本格式错误，请提供有效的 JSON"
+            )
     
     db.commit()
     db.refresh(test_case)
@@ -273,4 +301,54 @@ async def generate_playwright_script(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"生成Playwright脚本失败: {str(e)}"
+        )
+
+
+@router.post("/cases/generate-midscene-script", response_model=ScriptGenerationResponse)
+async def generate_midscene_script(
+    request: ScriptGenerationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """从标准化用例生成Midscene AI脚本"""
+    # 获取测试用例
+    test_case = db.query(TestCase).filter(TestCase.id == request.test_case_id).first()
+    if not test_case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="测试用例不存在"
+        )
+    
+    # 获取项目和LLM配置
+    project = db.query(Project).filter(Project.id == test_case.project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="项目不存在"
+        )
+    
+    # 解密API密钥并创建LLM服务
+    api_key = decrypt_api_key(project.llm_api_key)
+    llm_service = LLMService(
+        provider=project.llm_provider,
+        model=project.llm_model,
+        api_key=api_key,
+        base_url=project.llm_base_url,
+        config=project.llm_config
+    )
+    
+    try:
+        # 调用LLM生成Midscene脚本
+        result = llm_service.generate_midscene_script(
+            case_name=test_case.name,
+            standard_steps=cast(List[Dict[str, Any]], test_case.standard_steps),
+            base_url=project.base_url
+        )
+        
+        return ScriptGenerationResponse(playwright_script=result)
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"生成Midscene脚本失败: {str(e)}"
         )

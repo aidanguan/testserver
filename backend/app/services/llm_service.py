@@ -88,6 +88,27 @@ class LLMService:
         response = self._call_llm(prompt)
         return self._parse_script_response(response)
     
+    def generate_midscene_script(
+        self, 
+        case_name: str,
+        standard_steps: List[Dict[str, Any]], 
+        base_url: str
+    ) -> Dict[str, Any]:
+        """
+        从标准化用例生成Midscene AI脚本
+        
+        Args:
+            case_name: 用例名称
+            standard_steps: 标准化步骤列表
+            base_url: 被测站点基础URL
+            
+        Returns:
+            Midscene脚本字典
+        """
+        prompt = self._build_case_to_midscene_script_prompt(case_name, standard_steps, base_url)
+        response = self._call_llm(prompt)
+        return self._parse_script_response(response)
+    
     def analyze_final_result(
         self, 
         expected_result: str,
@@ -406,6 +427,90 @@ class LLMService:
     }}
   ]
 }}"""
+    
+    def _build_case_to_midscene_script_prompt(self, case_name: str, standard_steps: List[Dict[str, Any]], base_url: str) -> str:
+        """构建用例转Midscene AI脚本的提示词"""
+        steps_json = json.dumps(standard_steps, ensure_ascii=False, indent=2)
+        
+        return f"""你是一个Midscene AI自动化测试专家。请将以下标准化测试步骤转换为Midscene脚本配置。
+
+用例名称: {case_name}
+被测站点: {base_url}
+标准化步骤:
+{steps_json}
+
+请生成一个JSON格式的Midscene脚本配置,包含以下字段:
+1. browser: 浏览器类型(chromium/firefox/webkit),默认chromium
+2. viewport: 视口尺寸 {{{{width: 1280, height: 720}}}}
+3. steps: Midscene AI步骤数组,每个步骤包含:
+   - index: 步骤序号
+   - action: Midscene操作类型
+   - description: 自然语言描述（Midscene的核心）
+   - value: 输入值或URL（如需要）
+   - screenshot: 是否截屏(布尔值),默认true
+   - timeout: 超时时间(毫秒),可选
+
+支持的Midscene action类型:
+- goto: 导航到URL
+- aiTap: AI点击，使用自然语言描述目标元素（例："点击登录按钮"）
+- aiInput: AI输入，使用自然语言描述输入框（例："在搜索框中输入"）
+- aiAction: 通用AI操作，使用自然语言描述复杂操作
+- aiAssert: AI断言，验证页面状态
+- aiWaitFor: AI等待，等待特定状态出现
+- aiQuery: AI查询，提取页面数据
+- waitTime: 等待固定时间(需要duration参数)
+- screenshot: 截屏
+
+Midscene的优势：
+- 不需要CSS选择器，直接使用自然语言描述元素
+- AI自动定位元素，更稳定更智能
+- 支持复杂的视觉判断和断言
+
+请只返回JSON,不要包含其他说明文字。
+
+示例输出:
+{{{{
+  "browser": "chromium",
+  "viewport": {{{{
+    "width": 1280,
+    "height": 720
+  }}}},
+  "steps": [
+    {{{{
+      "index": 1,
+      "action": "goto",
+      "value": "{base_url}/login",
+      "description": "打开登录页面",
+      "screenshot": true
+    }}}},
+    {{{{
+      "index": 2,
+      "action": "aiInput",
+      "value": "testuser",
+      "description": "在用户名输入框中输入",
+      "screenshot": true
+    }}}},
+    {{{{
+      "index": 3,
+      "action": "aiInput",
+      "value": "password123",
+      "description": "在密码输入框中输入",
+      "screenshot": true
+    }}}},
+    {{{{
+      "index": 4,
+      "action": "aiTap",
+      "description": "点击登录按钮",
+      "screenshot": true
+    }}}},
+    {{{{
+      "index": 5,
+      "action": "aiAssert",
+      "description": "页面显示用户仪表板",
+      "screenshot": true
+    }}}}
+  ]
+}}}}"""
     
     def _build_verdict_prompt(
         self, 

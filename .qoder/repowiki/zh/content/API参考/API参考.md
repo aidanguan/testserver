@@ -13,6 +13,12 @@
 - [test_run.py](file://backend/app/schemas/test_run.py)
 </cite>
 
+## 更新摘要
+**已更新内容**
+- 更新了**项目管理API (/projects)** 和 **测试用例API (/test-cases)** 的响应体结构，以反映新增的统计字段
+- 为 `/projects` 和 `/projects/{project_id}/cases` 端点添加了详细的响应体示例
+- 更新了受影响的章节来源，以包含最新的文件和行号信息
+
 ## 目录
 1. [简介](#简介)
 2. [认证API (/auth)](#认证api-auth)
@@ -233,14 +239,41 @@ curl -X GET http://localhost:8000/api/auth/current \
 
 ### GET /projects - 获取项目列表
 **功能说明**  
-获取所有项目列表。
+获取所有项目列表，并包含每个项目的统计数据，如测试用例数量、执行次数和通过率。
+
+**请求头**  
+- `Authorization: Bearer <token>`
+
+**响应体 (200 OK)**  
+```json
+[
+  {
+    "id": 0,
+    "name": "string",
+    "description": "string",
+    "base_url": "string",
+    "llm_provider": "string",
+    "llm_model": "string",
+    "llm_api_key": "***",
+    "llm_config": {},
+    "llm_base_url": "string",
+    "created_by": 0,
+    "created_at": "string",
+    "updated_at": "string",
+    "test_case_count": 0,
+    "execution_count": 0,
+    "pass_rate": 0.0
+  }
+]
+```
 
 **HTTP状态码**  
 - `200`: 获取成功
 - `401`: 未授权
 
 **Section sources**
-- [projects.py](file://backend/app/api/endpoints/projects.py#L15-L25)
+- [projects.py](file://backend/app/api/endpoints/projects.py#L15-L40)
+- [project.py](file://backend/app/schemas/project.py#L56-L60)
 
 ### POST /projects - 创建项目
 **功能说明**  
@@ -283,7 +316,7 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `403`: 无权限
 
 **Section sources**
-- [projects.py](file://backend/app/api/endpoints/projects.py#L30-L60)
+- [projects.py](file://backend/app/api/endpoints/projects.py#L45-L85)
 - [project.py](file://backend/app/schemas/project.py#L15-L25)
 
 ### GET /projects/{project_id} - 获取项目详情
@@ -296,7 +329,7 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `401`: 未授权
 
 **Section sources**
-- [projects.py](file://backend/app/api/endpoints/projects.py#L65-L75)
+- [projects.py](file://backend/app/api/endpoints/projects.py#L90-L100)
 
 ### PUT /projects/{project_id} - 更新项目
 **功能说明**  
@@ -323,7 +356,7 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `403`: 无权限
 
 **Section sources**
-- [projects.py](file://backend/app/api/endpoints/projects.py#L80-L120)
+- [projects.py](file://backend/app/api/endpoints/projects.py#L105-L155)
 - [project.py](file://backend/app/schemas/project.py#L26-L35)
 
 ### DELETE /projects/{project_id} - 删除项目
@@ -337,13 +370,37 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `403`: 无权限
 
 **Section sources**
-- [projects.py](file://backend/app/api/endpoints/projects.py#L125-L142)
+- [projects.py](file://backend/app/api/endpoints/projects.py#L160-L177)
 
 ## 测试用例API (/test-cases)
 
 ### GET /projects/{project_id}/cases - 获取项目测试用例列表
 **功能说明**  
-获取指定项目的测试用例列表。
+获取指定项目的测试用例列表，并包含每个测试用例的执行统计数据，如执行次数和通过率。
+
+**请求头**  
+- `Authorization: Bearer <token>`
+
+**响应体 (200 OK)**  
+```json
+[
+  {
+    "id": 0,
+    "project_id": 0,
+    "name": "string",
+    "description": "string",
+    "natural_language": "string",
+    "standard_steps": [],
+    "playwright_script": {},
+    "expected_result": "string",
+    "created_by": 0,
+    "created_at": "string",
+    "updated_at": "string",
+    "execution_count": 0,
+    "pass_rate": 0.0
+  }
+]
+```
 
 **HTTP状态码**  
 - `200`: 获取成功
@@ -351,7 +408,8 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `401`: 未授权
 
 **Section sources**
-- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L15-L30)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L15-L40)
+- [test_case.py](file://backend/app/schemas/test_case.py#L67-L70)
 
 ### POST /projects/{project_id}/cases - 创建测试用例
 **功能说明**  
@@ -377,7 +435,7 @@ curl -X GET http://localhost:8000/api/auth/current \
 - `401`: 未授权
 
 **Section sources**
-- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L35-L60)
+- [test_cases.py](file://backend/app/api/endpoints/test_cases.py#L45-L75)
 - [test_case.py](file://backend/app/schemas/test_case.py#L35-L40)
 
 ### POST /cases/generate-from-nl - 从自然语言生成标准化用例

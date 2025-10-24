@@ -45,6 +45,13 @@
       
       <el-main class="main">
         <router-view />
+        
+        <!-- 版本标记 -->
+        <div class="version-badge">
+          <div class="version-info">
+            {{ version }}
+          </div>
+        </div>
       </el-main>
     </el-container>
   </el-container>
@@ -55,12 +62,14 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import packageJson from '../../package.json'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 
 const currentRoute = computed(() => route.path)
+const version = computed(() => `v${packageJson.version}`)
 
 const handleCommand = async (command) => {
   if (command === 'logout') {
@@ -119,5 +128,33 @@ const handleCommand = async (command) => {
 .main {
   background-color: #f5f7fa;
   padding: 20px;
+  position: relative;
+}
+
+.version-badge {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 999;
+}
+
+.version-info {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 6px 14px;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+  cursor: default;
+  user-select: none;
+}
+
+.version-info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.35);
 }
 </style>
